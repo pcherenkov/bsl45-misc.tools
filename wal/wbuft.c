@@ -1,4 +1,5 @@
 /* @(#) test module to alternate thru different writing techniques */
+/* compile with gcc -pthread flag (*not* -lpthread, s'il vous plait) */
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -92,6 +93,12 @@ toggle_sync_thread (int fd, u_int32_t flags, u_int32_t state)
         g_st.flags  = flags;
         g_st.state  = state;
 
+    rc = pthread_cond_signal (&g_st.cond);
+    if (rc) {
+        (void) fprintf (stderr, "\n%s: pthread_cond_signal error [%d]\n",
+            __func__, rc);
+    }
+
     rc = pthread_mutex_unlock (&g_st.mtx);
     if (rc) {
         (void) fprintf (stderr, "\n%s: pthread_mutex_unlock error [%d]\n",
@@ -99,12 +106,6 @@ toggle_sync_thread (int fd, u_int32_t flags, u_int32_t state)
         return rc;
     }
 
-    rc = pthread_cond_signal (&g_st.cond);
-    if (rc) {
-        (void) fprintf (stderr, "\n%s: pthread_cond_signal error [%d]\n",
-            __func__, rc);
-        return rc;
-    }
 
     return rc;
 }
