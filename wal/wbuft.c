@@ -3,6 +3,7 @@
 
 #include <sys/types.h>
 #include <sys/time.h>
+#include <sys/uio.h>
 
 #include <unistd.h>
 #include <string.h>
@@ -60,8 +61,17 @@ struct test_spec {
     size_t      niter;
     size_t      incr;
     size_t      nincr;
+    size_t      num_chunks;
 };
 
+
+typedef ssize_t (*wfunc_t) (int fd, const char* buf, size_t len,
+                const struct test_spec* sp);
+
+
+/**
+ * functions
+ */
 
 static int
 fd_sync (int fd, u_int32_t flags)
@@ -207,6 +217,63 @@ stop_sync_thread (pthread_t* ptid)
 
 
 static ssize_t
+writev_nbuf (int fd, const char* buf, size_t len, const struct test_spec* sp)
+{
+    size_t i = 0, j = 0;
+    ssize_t chunk_len = 0, nwr = -1, ntotal = 0, nleft = (ssize_t)len;
+    int err = 0;
+    struct iovec* iov = NULL;
+    const char *p = buf;
+
+    assert (buf && sp);
+    assert ((sp->num_chunks > 1) && (sp->num_chunks < len));
+
+    chunk_len = (ssize_t)(len / sp->num_chunks);
+    assert (chunk_len >= 1);
+
+    if (-1 == lseek (fd, 0, SEEK_SET)) {
+        err = errno;
+        perror ("lseek");
+        return -err;
+    }
+
+    iov = calloc (sp->num_chunks, sizeof(iov[0]));
+    if (!iov) {
+        (void) fputs ("calloc for iov failed\n", stderr);
+        return -1;
+    }
+
+    for (i = 0; (i < sp->num_chunks) && (nleft > 0); ++i) {
+        iov[i].iov_base = (char*)p;
+        iov[i].iov_len = ((i + 1) < sp->num_chunks)
+                        ? (size_t)chunk_len : (size_t)nleft;
+
+        p += iov[i].iov_len;
+        nleft -= iov[i].iov_len;
+    }
+    assert (0 == nleft);
+
+    for (j = 0; j < sp->niter; ++j) {
+        nwr = writev (fd, iov, sp->num_chunks);
+        if (nwr != (ssize_t)len) {
+            err = errno;
+            (void) fprintf (stderr, "%s: wrote %ld bytes out of %ld: err=%d [%s]\n",
+                __func__, (long)nwr, len, err, (err ? strerror(err) : "none"));
+            break;
+        }
+
+        if (sp->mode_flags & SYNC_TYPE) {
+            do_sync (fd, sp->mode_flags);
+        }
+        ntotal += nwr;
+    }
+
+    free (iov);
+    return !err ? ntotal : -err;
+}
+
+
+static ssize_t
 write_nbuf (int fd, const char* buf, size_t len, const struct test_spec* sp)
 {
     size_t i;
@@ -260,9 +327,12 @@ run_odsync (const char* fname, const struct test_spec* sp)
     struct timeval tstart, tend;
     ssize_t n = -1;
     pthread_t sync_thr = (pthread_t)0;
+    wfunc_t write_data = NULL;
 
     assert (fname && sp);
     srand (time(NULL));
+
+    write_data = (sp->num_chunks > 0) ? writev_nbuf : write_nbuf;
 
     oflags |= sp->open_flags;
     fd = open (fname, oflags, S_IRUSR|S_IWUSR);
@@ -271,8 +341,10 @@ run_odsync (const char* fname, const struct test_spec* sp)
         fprintf (stderr, "open [%s]: %s\n", fname, strerror(err));
         return err;
     }
-    (void) printf ("BEGIN test: buf[%ld], niter=%ld, incr=%ld, nincr=%ld, mode=0x%x\n",
-            (long)sp->len, (long)sp->niter, (long)sp->incr, (long)sp->nincr, sp->mode_flags);
+    (void) printf ("BEGIN test: buf[%ld], niter=%ld, incr=%ld, nincr=%ld, "
+            "num_chunks=[%ld] mode=0x%x\n",
+            (long)sp->len, (long)sp->niter, (long)sp->incr, (long)sp->nincr,
+            (long)sp->num_chunks, sp->mode_flags);
     (void) printf ("opened %s with flags=0x%04x\n", fname, oflags);
 
     if (sp->mode_flags & FALLOC) {
@@ -306,7 +378,7 @@ run_odsync (const char* fname, const struct test_spec* sp)
 
         (void) printf (" => buf[%ld bytes]: ", (long)len);
         gettimeofday (&tstart, 0);
-            n = write_nbuf (fd, buf, len, sp);
+            n = write_data (fd, buf, len, sp);
             if (n <= 0) {
                 rc = (int)n;
                 break;
@@ -342,6 +414,7 @@ usage_exit (const char* appname)
     (void) fprintf (stderr, " Increment options: \n");
     (void) fprintf (stderr, "  -I size =  increment buffer by <size>\n");
     (void) fprintf (stderr, "  -N count = conduct <count> increments\n");
+    (void) fprintf (stderr, "  -U count = split each buffer into <count> chunks to writev(2)>\n");
     (void) fprintf (stderr, " open/write(2) options: \n");
     (void) fprintf (stderr, "  -i = O_DIRECT, -f = O_FSYNC, -d = O_DSYNC "
             "-s = O_SYNC -a = O_APPEND -t = O_TRUNC\n");
@@ -363,7 +436,7 @@ read_opt (int argc, char* const argv[], struct test_spec* sp)
     assert (argv && sp);
 
     (void) fputs ("Options: ", stdout);
-    while (-1 != (opt = getopt (argc, argv, "ktfaidDSI:N:FT"))) {
+    while (-1 != (opt = getopt (argc, argv, "ktfaidDSI:N:FTU:"))) {
         switch (opt) {
             case 'T':
                 sp->mode_flags |= SYNC_THREAD;
@@ -427,6 +500,15 @@ read_opt (int argc, char* const argv[], struct test_spec* sp)
                 sp->nincr = lval;
                 (void) fprintf (stdout, "nincr=%ld ", lval);
                 break;
+            case 'U':
+                lval = atol (optarg);
+                if (lval < 2) {
+                    (void) fprintf (stderr, "\n%s: invalid chunk count value: %ld\n", argv[0], lval);
+                    return EINVAL;
+                }
+                sp->num_chunks = lval;
+                (void) fprintf (stdout, "num_chunks=%ld ", lval);
+                break;
             default:
                 (void) fprintf (stderr, "\n%s: Invalid option: %c\n",
                                 argv[0], (char)opt);
@@ -488,6 +570,13 @@ int main (int argc, char* const argv[])
     if (!sp.len)   sp.len     = MIN_BUFSZ;
     if (!sp.incr)  sp.incr    = MIN_INCR;
     if (!sp.nincr) sp.nincr   = MIN_NINCR;
+
+    if (sp.num_chunks >= sp.len) {
+        (void) fprintf (stderr, "%s: number of chunks (-U option) [%ld] "
+            "should not exceed buffer size [%ld]\n", argv[0],
+            (long)sp.num_chunks, (long)sp.len);
+        return EINVAL;
+    }
 
     setbuf (stdout, NULL);
     rc = run_odsync (fname, &sp);
