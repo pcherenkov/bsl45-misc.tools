@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/uio.h>
+#include <sys/stat.h>
 
 #include <unistd.h>
 #include <string.h>
@@ -25,6 +26,15 @@
 #endif
 
 #include <assert.h>
+
+#include <sys/syscall.h>
+#ifndef SYS_fdatasync
+    #define NO_DSYNC
+#endif
+#ifndef SYS_fallocate
+    #define NO_FALLOCATE
+#endif
+
 
 static const size_t    MIN_BUFSZ   = 1024;
 static const size_t    MAX_BUFSZ   = 1024*1024*512;
@@ -79,7 +89,9 @@ fd_sync (int fd, u_int32_t flags)
     switch (flags & SYNC_TYPE) {
         case 0:         return 0;
         case SYNC_ALL:  return fsync (fd);
+#ifndef NO_DSYNC
         case SYNC_DATA: return fdatasync (fd);
+#endif
         default:
             assert (0);
     }
@@ -351,7 +363,7 @@ run_odsync (const char* fname, const struct test_spec* sp)
         nfalloc = (sp->len * sp->niter) + (sp->incr * (sp->nincr-1));
 #ifdef __linux__
         rc = fallocate (fd, sp->mode_flags & FALLOC_SZ ? FALLOC_FL_KEEP_SIZE : 0, 0, nfalloc);
-#else
+#elif !defined (NO_FALLOCATE)
         rc = posix_fallocate (fd, 0, nfalloc);
 #endif
         if (rc) {
@@ -409,18 +421,25 @@ usage_exit (const char* appname)
     (void) fprintf (stderr, "Usage: %s [options] filename buf_size num_iter \n",
                     appname);
     (void) fprintf (stderr, " Mode options: \n");
+#ifndef NO_FALLOCATE
     (void) fprintf (stderr, "  -F fallocate() disk space\n");
     (void) fprintf (stderr, "  -k fallocate(FALLOC_FL_KEEP_SIZE)\n");
+#endif
     (void) fprintf (stderr, " Increment options: \n");
     (void) fprintf (stderr, "  -I size =  increment buffer by <size>\n");
     (void) fprintf (stderr, "  -N count = conduct <count> increments\n");
     (void) fprintf (stderr, "  -U count = split each buffer into <count> chunks to writev(2)>\n");
     (void) fprintf (stderr, " open/write(2) options: \n");
-    (void) fprintf (stderr, "  -i = O_DIRECT, -f = O_FSYNC, -d = O_DSYNC "
-            "-s = O_SYNC -a = O_APPEND -t = O_TRUNC\n");
+    (void) fprintf (stderr, "  -i = O_DIRECT, -f = O_FSYNC, "
+#ifndef NO_DSYNC
+                            "-d = O_DSYNC "
+#endif
+                            "-s = O_SYNC -a = O_APPEND -t = O_TRUNC\n");
+#ifndef NO_DSYNC
     (void) fprintf (stderr, "  -D = fdatasync() after each write\n");
+#endif
     (void) fprintf (stderr, "  -S = fsync() after each write\n");
-    (void) fprintf (stderr, "  -T = sync [-D|-S] in a thread\n");
+    (void) fprintf (stderr, "  -T = sync in a thread\n");
 
     (void) fputc ('\n', stdout);
     exit (1);
@@ -471,13 +490,23 @@ read_opt (int argc, char* const argv[], struct test_spec* sp)
                 (void) fputs ("O_FSYNC ", stdout);
                 break;
             case 'd':
+#ifdef NO_DSYNC
+                (void) fputs ("\nO_DSYNC is not supported\n", stderr);
+                return EINVAL;
+#else
                 sp->open_flags |= O_DSYNC;
                 (void) fputs ("O_DSYNC ", stdout);
                 break;
+#endif
             case 'D':
+#ifdef NO_DSYNC
+                (void) fputs ("\nfdatasync() is not supported\n", stderr);
+                return EINVAL;
+#else
                 sp->mode_flags |= SYNC_DATA;
                 (void) fputs ("fdatasync() ", stdout);
                 break;
+#endif
             case 'S':
                 sp->mode_flags |= SYNC_DATA;
                 (void) fputs ("fsync() ", stdout);
