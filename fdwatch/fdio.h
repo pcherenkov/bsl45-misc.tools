@@ -8,8 +8,9 @@ extern "C" {
 #endif
 
 enum {
-    FDIO_QUIET_BLK  = 1,
-    FDIO_QUIET_PIPE = (1 << 1)
+    FDIO_QUIET_EAGAIN      = 1,
+    FDIO_QUIET_EPIPE    = (1 << 1),
+    FDIO_QUIET_EINTR    = (1 << 2)
 };
 
 
@@ -27,7 +28,7 @@ nwrite(int fd, const char* buf, size_t count, int* error)
 inline static ssize_t
 nwrite_sock(int fd, const char* buf, size_t count, int* error)
 {
-    return nwrite_(fd, buf, count, error, FDIO_QUIET_BLK | FDIO_QUIET_PIPE);
+    return nwrite_(fd, buf, count, error, FDIO_QUIET_EAGAIN | FDIO_QUIET_EPIPE);
 }
 
 
@@ -38,7 +39,7 @@ nwritev_(int fd, struct iovec *iov, int iovcnt, int* error, u_int32_t flags);
 inline static ssize_t
 nwritev_sock(int fd, struct iovec *iov, int iovcnt, int* error)
 {
-    return nwritev_(fd, iov, iovcnt, error, FDIO_QUIET_BLK | FDIO_QUIET_PIPE);
+    return nwritev_(fd, iov, iovcnt, error, FDIO_QUIET_EAGAIN | FDIO_QUIET_EPIPE);
 }
 
 
@@ -56,7 +57,7 @@ nread_(int fd, char* buf, size_t count, int* error, u_int32_t flags);
 inline static ssize_t
 nread_sock(int fd, char* buf, size_t count, int* error)
 {
-    return nread_(fd, buf, count, error, FDIO_QUIET_BLK);
+    return nread_(fd, buf, count, error, FDIO_QUIET_EAGAIN);
 }
 
 

@@ -21,13 +21,16 @@ nwrite_(int fd, const char* buf, size_t count, int* error, u_int32_t flags)
         if (nwr <= 0) {
             err = errno;
             if (EINTR == err) {
-                errno = 0;
+                if (0 == (flags & FDIO_QUIET_EINTR)) {
+                    perror("writev");
+                }
+                errno = err = 0;
                 continue;
             }
-            if ((flags & FDIO_QUIET_BLK) &&
+            if ((flags & FDIO_QUIET_EAGAIN) &&
                 ((EWOULDBLOCK == err) || (EAGAIN == err)))
                 break;
-            else if ((flags & FDIO_QUIET_PIPE) && (EPIPE == err))
+            else if ((flags & FDIO_QUIET_EPIPE) && (EPIPE == err))
                 break;
 
             perror("writev");
@@ -58,17 +61,22 @@ nwritev_(int fd, struct iovec *iov, int iovcnt, int* error, u_int32_t flags)
         if (nbytes <= 0) {
             err = errno;
             if (EINTR == err) {
-                err = 0;
-                continue;
+                if (0 == (flags & FDIO_QUIET_EINTR)) {
+                    perror("writev");
+                }
+                errno = err = 0;
+                nbytes = 0;
             }
-            if ((flags & FDIO_QUIET_BLK) &&
-                ((EWOULDBLOCK == err) || (EAGAIN == err)))
-                break;
-            else if ((flags & FDIO_QUIET_PIPE) && (EPIPE == err))
-                break;
+            else {
+                if ((flags & FDIO_QUIET_EAGAIN) &&
+                    ((EWOULDBLOCK == err) || (EAGAIN == err)))
+                    break;
+                else if ((flags & FDIO_QUIET_EPIPE) && (EPIPE == err))
+                    break;
 
-            perror("writev");
-            break;
+                perror("writev");
+                break;
+            }
         }
         total += nbytes;
 
@@ -107,10 +115,13 @@ nread_(int fd, char* buf, size_t count, int* error, u_int32_t flags)
         if (-1 == nrd) {
             err = errno;
             if (EINTR == err) {
-                errno = 0;
+                if (0 == (flags & FDIO_QUIET_EINTR)) {
+                    perror("writev");
+                }
+                err = errno = 0;
                 continue;
             }
-            if ((flags & FDIO_QUIET_BLK) &&
+            if ((flags & FDIO_QUIET_EAGAIN) &&
                 ((EWOULDBLOCK == err) || (EAGAIN == err)))
                     break;
             perror ("read");
