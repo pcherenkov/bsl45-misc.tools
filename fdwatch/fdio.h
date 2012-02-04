@@ -55,7 +55,7 @@ nread_(int fd, char* buf, size_t count, int* error, u_int32_t flags);
 
 
 inline static ssize_t
-nread_sock(int fd, char* buf, size_t count, int* error)
+nread_nblk(int fd, char* buf, size_t count, int* error)
 {
     return nread_(fd, buf, count, error, FDIO_QUIET_EAGAIN);
 }
