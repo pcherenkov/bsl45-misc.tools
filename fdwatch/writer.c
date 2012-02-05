@@ -4,115 +4,124 @@
 #include <sys/socket.h>
 #include <sys/uio.h>
 
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
-#include <assert.h>
 #include <stdlib.h>
+#include <limits.h>
+#include <time.h>
+#include <signal.h>
+
+#include <assert.h>
 
 #include "fdio.h"
 
+static size_t MTU_DEFAULT = 1500;
+static volatile sig_atomic_t g_quit = 0;
 
-enum {
-    trf_SOCK_DST =  1,
-    trf_LOOP_SRC =  (1 << 1)
-};
-
-static char trf_buf[1024 * 4 + 1];
-static const size_t TRFBUF_LIMIT = sizeof(trf_buf) - 1;
-
-
-/* implementation
- */
-
-/* TODO: move to fdio.c */
-
-ssize_t
-transfer(int in_fd, int out_fd, off_t *in_offset, size_t nbytes,
-     int* error, u_int32_t *flags)
+static int
+rollover(const char* fpath, int* fd, size_t counter)
 {
-    int rc = 0, err = 0;
-    ssize_t nrd = -1, nwr = -1, ntotal = -1;
-    off_t offset = 0;
-            /* TODO: move to nsendfile */
-    /*
-    static const int SF_FLAGS = SF_NODISKIO | SF_MNOWAIT;
-    */
-    u_int32_t nwr_flags = FDIO_QUIET_EAGAIN;
+    int n = 0;
 
-    assert(flags);
-    assert(!in_offset || (*in_offset >= 0));
+    static char newpath[PATH_MAX] = "\0";
 
-    do {
-        if (*flags & trf_SOCK_DST) {
-            /* TODO: implement */
-            ntotal = nsendfile(out_fd, in_fd, in_offset, nbytes, &err);
-            if (0 == err)
-                break;
-            else {
-                perror ("sendfile");
-                rc = -1;
-                if (ntotal || !can_rdwr(err, in_offset))
-                    break;
-                (void) fprintf(stderr, "%s: trying read(2)/write(2)\n",
-                    __func__);
-            }
-        }
+    assert(fpath && fd && counter);
 
-        if (nbytes > TRFBUF_LIMIT)
-            nbytes = TRFBUF_LIMIT;
+    n = snprintf(newpath, sizeof(newpath)-1, "%s.%06lu", fpath, counter);
+    assert ((size_t)n < sizeof(newpath));
+    newpath[sizeof(newpath)-1] = '\0';
 
-            /* TODO: implement */
-        nrd = nread_at(in_fd, in_offset, &tr_buf[0], nbytes, &err);
-
-        if ((0 == nrd) && !err && (*flags & trf_LOOP_SRC)) {
-            *in_offset = 0;
-            /* TODO: implement */
-            nrd = nread_at(in_fd, in_offset, &tr_buf[0], nbytes, &err);
-        }
-
-        if((nrd <= 0) || err)
-            break;
-
-        if (*flags & trf_SOCK_DST)
-            nwr_flags |= FDIO_QUIET_EPIPE;
-
-        nwr = nwrite_(out_fd, &tr_buf[0], nrd, &err, nwr_flags);
-        if (nwr == nrd) {
-            ntotal = nwr;
-        }
-        else if (nwr < nrd) {
-            ntotal = nwr;
-            (void) fprintf(stderr, "%s: fd in/out=[%d/%d] underwrite: "
-                "read/write=[%ld/%ld]", __func__, in_fd, out_fd,
-                (long)nrd, (long)nwr);
-        }
-        else {
-            (void) fprintf(stderr, "%s: panic: nread < nwrite [%ld/%ld]\n",
-                __func__, (long)nrd, (long)nwr);
-            abort();
-        }
-
-        if (*flags & trf_SOCK_DST) {
-            *flags &= ~trf_SOCK_DST;
-            (void) fprintf(stderr, "%s: socket mode dropped for out_fd=%d\n",
-                __func__, out_fd);
-        }
-    } while (0);
-
-
-    if (err || (ntotal <= 0)) {
-        (void) fprintf(stderr, "%s: total=%ld, err=[%d:%s]\n",
-            __func__, (long)ntotal, err, err ? strerror(err) : "");
+    if (-1 == rename(fpath, newpath)) {
+        perror("rename");
+        return -1;
     }
 
-    if (offset)
-        *offset += ntotal;
+    if (-1 == close(*fd)) {
+        perror("close");
+        return -1;
+    }
 
-    if (error)
-        *error = err;
+    if (-1 == unlink(newpath)) {
+        perror("unlink");
+        return -1;
+    }
 
-    return ntotal;
+    *fd = open(fpath, O_WRONLY|O_CREAT|O_TRUNC);
+    if (-1 == (*fd)) {
+        perror("open [roll]");
+        return -1;
+    }
+
+    return 0;
 }
+
+
+static int
+cyclic_file_relay(const char* src_path, const char* dst_path, long ms_delay)
+{
+    int in_fd = -1, out_fd = -1, err = 0;
+    u_int32_t flags = 0;
+    ssize_t ntotal = 0, nsent = 0;
+    off_t start = 0;
+    size_t chunk_len = MTU_DEFAULT, nrolls = 0;
+    struct timespec tms;
+
+    static const size_t MAX_DST_LENGTH = (1024 * 1024) * 20;
+    static const long NSEC_IN_MS = 1000000;
+
+    tms.tv_sec  = 0;
+    tms.tv_nsec = ms_delay * NSEC_IN_MS;
+
+    in_fd = open(src_path, O_RDONLY);
+    if (-1 == in_fd) {
+        perror("open [src]");
+        return -1;
+    }
+
+    out_fd = open(dst_path, O_WRONLY|O_CREAT|O_TRUNC);
+    if (-1 == out_fd) {
+        perror("open [dst]");
+        return -1;
+    }
+
+    while (!g_quit) {
+        nsent = transfer(out_fd, in_fd, NULL, chunk_len, flags);
+        if (errno) {
+            err = errno;
+            perror("transfer");
+            break;
+        }
+
+        if (0 == nsent) { /* EOF */
+            start = lseek(in_fd, 0, SEEK_SET);
+            if (-1 == start) {
+                err = errno;
+                perror("lseek [start]");
+                break;
+            }
+            (void) fprintf(stderr, "%s: reading [%s] from the start\n",
+                __func__, src_path);
+        }
+
+        ntotal += nsent;
+
+        if ((ntotal + chunk_len) >= MAX_DST_LENGTH) {
+            if (-1 == rollover(dst_path, &out_fd, ++nrolls))
+                break;
+        }
+
+        if (-1 == nanosleep(&tms, NULL))
+            perror("nanosleep");
+    }
+
+    close(out_fd);
+    close(in_fd);
+
+    return err ? -1 : 0;
+}
+
 
 
 /* __EOF__ */

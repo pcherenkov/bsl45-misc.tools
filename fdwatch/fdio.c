@@ -288,7 +288,8 @@ transfer(int out_fd, int in_fd, off_t *offset, size_t count,
         return nsendfile(out_fd, in_fd, offset, count, bsd_flags, flags);
     }
 
-    if (nbytes > TRFBUF_LIMIT)
+    /* if 0 == count, we just don't know how much */
+    if ((0 == nbytes) || (nbytes > TRFBUF_LIMIT))
         nbytes = TRFBUF_LIMIT;
 
     do {

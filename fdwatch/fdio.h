@@ -12,8 +12,7 @@ enum {
     FDIO_QUIET_EPIPE    = (1 << 1),
     FDIO_QUIET_EINTR    = (1 << 2),
     FDIO_SENDFILE       = (1 << 3),
-    FDIO_SENDFILE_NOWAIT= (1 << 4),
-    FDIO_SRC_LOOP       = (1 << 5)
+    FDIO_SENDFILE_NOWAIT= (1 << 4)
 };
 
 
