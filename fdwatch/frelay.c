@@ -49,21 +49,18 @@ rollover(const char* fpath, int* fd, size_t counter)
         return -1;
     }
 
-    *fd = -1;
-
-    /*
-    if (-1 == unlink(newpath)) {
-        perror("unlink");
-        return -1;
-    }
-    */
-
-    *fd = open(fpath, O_WRONLY|O_CREAT|O_TRUNC,
+    *fd = open(fpath, O_WRONLY|O_CREAT,
         S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
     if (-1 == (*fd)) {
         perror("open [roll]");
         return -1;
     }
+
+    if (-1 == unlink(newpath)) {
+        perror("unlink");
+        return -1;
+    }
+
 
     return 0;
 }
