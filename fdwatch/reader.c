@@ -15,6 +15,9 @@
 
 #include <assert.h>
 
+#include "fdio.h"
+
+
 #define TMOUT_SEC   5
 #define TMOUT_NSEC  0
 
@@ -24,32 +27,6 @@ static struct cliopt {
     time_t  tmout_sec;
 } g_opt;
 
-
-static ssize_t
-nread (int fd, char* buf, size_t count)
-{
-    ssize_t total = 0;
-
-    while (count > (size_t)total) {
-        ssize_t nrd = read (fd, buf + total, count - (size_t)total);
-        if (-1 == nrd) {
-            if (EINTR == errno) {
-                errno = 0;
-                continue;
-            } else {
-                perror ("read");
-                return nrd;
-            }
-        }
-        else if (0 == nrd) {
-            return total;
-        }
-
-        total += nrd;
-    }
-
-    return total;
-}
 
 
 static int
@@ -71,7 +48,7 @@ process_event(const struct kevent *ke)
         if (offset > 0) {
             len = ((size_t)offset >= sizeof(buf))
                     ? sizeof(buf) - 1 : (size_t)offset;
-            nrd = nread(fd, buf, len);
+            nrd = nread(fd, buf, len, 0);
             (void) printf("read %ld bytes from fd=%d\n", (long)nrd, fd);
             if (nrd <= 0)
                 return -1;
