@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
+#include <sys/stat.h>
 
 #include <fcntl.h>
 #include <unistd.h>
