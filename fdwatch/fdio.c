@@ -10,6 +10,10 @@
 #include <unistd.h>
 #include <string.h>
 
+#ifdef __linux__
+    #include <sys/sendfile.h>
+#endif
+
 #include <assert.h>
 
 #include "fdio.h"
@@ -186,6 +190,8 @@ npread(int fd, char* buf, size_t count, off_t offset, u_int32_t flags)
 
 
 
+#if defined(__FreeBSD__)
+
 inline static ssize_t
 bsd_nsendfile(int out_fd, int in_fd, off_t *offset, size_t count, int bsd_flags,
     u_int32_t flags)
@@ -255,6 +261,7 @@ bsd_nsendfile(int out_fd, int in_fd, off_t *offset, size_t count, int bsd_flags,
 
     return sbytes;
 }
+#endif /* __FreeBSD__ */
 
 
 ssize_t
@@ -262,7 +269,7 @@ nsendfile(int out_fd, int in_fd, off_t *offset, size_t count, int bsd_flags,
     u_int32_t flags)
 {
 #if defined(__linux__)
-    (void)flags;
+    (void)flags; (void)bsd_flags;
     return sendfile(out_fd, in_fd, offset, count);
 #elif defined(__FreeBSD__)
     return bsd_nsendfile(out_fd, in_fd, offset, count, bsd_flags, flags);
@@ -298,7 +305,7 @@ transfer(int out_fd, int in_fd, off_t *offset, size_t count,
             : nread(in_fd, &trf_buf[0], nbytes, flags);
         err = errno;
 
-        if (err)
+        if ((nrd <= 0) || err)
             break;
 
         nwr = nwrite(out_fd, &trf_buf[0], nrd, flags);
@@ -317,12 +324,6 @@ transfer(int out_fd, int in_fd, off_t *offset, size_t count,
             abort();
         }
     } while (0);
-
-
-    if (err || (ntotal <= 0)) {
-        (void) fprintf(stderr, "%s: total=%ld, err=[%d:%s]\n",
-            __func__, (long)ntotal, err, err ? strerror(err) : "");
-    }
 
     if (offset)
         *offset += ntotal;
