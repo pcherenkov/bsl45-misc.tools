@@ -1,0 +1,132 @@
+" An example for a vimrc file.
+"
+" Maintainer:   Bram Moolenaar <Bram@vim.org>
+" Last change:  2001 Jul 18
+"
+" To use it, copy it to
+"     for Unix and OS/2:  ~/.vimrc
+"         for Amiga:  s:.vimrc
+"  for MS-DOS and Win32:  $VIM\_vimrc
+"       for OpenVMS:  sys$login:.vimrc
+
+" When started as "evim", evim.vim will already have done these settings.
+if v:progname =~? "evim"
+   finish
+endif
+
+" Use Vim settings, rather then Vi settings (much better!).
+" This must be first, because it changes other options as a side effect.
+set nocompatible
+
+" allow backspacing over everything in insert mode
+set backspace=indent,eol,start
+
+set autoindent      " always set autoindenting on
+if has("vms")
+   set nobackup        " do not keep a backup file, use versions instead
+else
+   set backup      " keep a backup file
+   set backupdir=~/.vim_bkup
+endif
+" set history=50        " keep 50 lines of command line history
+set history=100
+set ruler       " show the cursor position all the time
+set showcmd     " display incomplete commands
+set incsearch       " do incremental searching
+
+" For Win32 GUI: remove 't' flag from 'guioptions': no tearoff menu entries
+" let &guioptions = substitute(&guioptions, "t", "", "g")
+
+" Don't use Ex mode, use Q for formatting
+map Q gq
+
+" Make p in Visual mode replace the selected text with the "" register.
+vnoremap p <Esc>:let current_reg = @"<CR>gvs<C-R>=current_reg<CR><Esc>
+
+" This is an alternative that also works in block mode, but the deleted
+" text is lost and it only works for putting the current register.
+"vnoremap p "_dp
+
+" Switch syntax highlighting on, when the terminal has colors
+" Also switch on highlighting the last used search pattern.
+if &t_Co > 2 || has("gui_running")
+   syntax on
+   set hlsearch
+endif
+
+set listchars=tab:>.,trail:.
+set smartindent
+set autoindent
+set backup
+" set background=light
+set nodigraph
+set noerrorbells
+set expandtab
+set smarttab
+set laststatus=2
+set list
+set pastetoggle=<F11>
+set shiftwidth=4
+set tabstop=4
+set shortmess=atI
+set showmatch
+set novisualbell
+set wildchar=<TAB>
+" set mouse=a
+set winminwidth=0
+set winminheight=0
+set nostartofline
+set showfulltag
+set noequalalways
+set splitright
+set shiftround
+set wildmenu
+if (version >= 602)
+       set preserveindent
+       set copyindent
+endif
+
+" set foldmethod=indent
+" set foldlevelstart=99
+set fo-=o
+set cpoptions+=$
+set showbreak=C\
+set display=lastline
+
+set hidden
+
+map <C-J> <C-W>j
+map <C-K> <C-W>k
+map <C-H> <C-W>h
+map <C-L> <C-W>l
+
+if has("unix")
+   nnoremap ,e :e <c-r>=expand("%:p:h") . "/" <cr>
+   nnoremap ,, ,
+else
+   nnoremap ,e :e <c-r>=expand("%:p:h") . "\\" <cr>
+   nnoremap ,, ,
+endif
+set number
+set sw=4
+set ts=4
+set smd
+set expandtab
+set hls
+set nolbr
+set history=20
+
+if has("gui_running")
+    if has("gui_gtk2")
+        set guifont=Monospace\ 9
+    elseif has("x11")
+        set guifont=-*-courier-medium-r-normal-*-*-180-*-*-m-*-*
+    else
+        set guifont=Courier_New:h10:cDEFAULT
+    endif
+endif
+
+colorscheme darkblue
+set background=dark
+
+" __EOF__
