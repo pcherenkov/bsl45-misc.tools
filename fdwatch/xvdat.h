@@ -20,7 +20,7 @@ struct xvlst {
             max_len;
 
     char    *taken;
-    size_t  border; /* index of last element ever used */
+    size_t  last;   /* index of last element ever used */
     ssize_t avail;  /* index of min available element */
 };
 

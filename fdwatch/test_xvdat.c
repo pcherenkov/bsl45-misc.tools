@@ -20,7 +20,7 @@ struct xv_rec {
     size_t      len,
                 max_len;
     char        *taken;
-    size_t      border;
+    size_t      last;
     ssize_t     avail;
 };
 
@@ -35,9 +35,9 @@ dump_xvl(FILE* fp, const struct xvlst* v)
         (void*)v, (void*)v->data, (long)v->len, (long)v->max_len);
 
     if (v->taken) {
-        (void) fprintf(fp, ", border=%ld, avail=%ld} taken=[",
-                (long)v->border, (long)v->avail);
-        for (i = 0; i < v->border + 1; ++i)
+        (void) fprintf(fp, ", last=%ld, avail=%ld} taken=[",
+                (long)v->last, (long)v->avail);
+        for (i = 0; i < v->last + 1; ++i)
             (void) fputc(v->taken[i] ? '1' : '0', fp);
         (void) fputs("]\n", fp);
     }
@@ -56,7 +56,7 @@ dump_xvrec(FILE* fp, const struct xv_rec* xvr)
     if (!xvr->r)
         return;
 
-    for (i = 0; i < (xvr->taken ? xvr->border+1 : xvr->len); ++i) {
+    for (i = 0; i < (xvr->taken ? xvr->last+1 : xvr->len); ++i) {
         if (xvr->taken && !xvr->taken[i])
             continue;
         (void) fprintf(fp, "%4ld. %s, %ld\n",
@@ -150,7 +150,7 @@ test_xvlst(size_t capacity)
     int rc = -1;
     struct xv_rec xvr;
     size_t i = 0;
-    ssize_t j = -1;
+    ssize_t j = -1, lj = -1;
 
     (void) memset(&xvr, 0, sizeof(xvr));
     do {
@@ -167,8 +167,8 @@ test_xvlst(size_t capacity)
         for (i = 0; i < capacity; ++i) {
             j = xvlst_add((struct xvlst*)&xvr, sizeof(struct rec), 10);
             if (j < 0) {
-                (void) fprintf(stderr, "%s: xvlst_add failed [rc=%ld]\n",
-                    __func__, (long)j);
+                (void) fprintf(stderr, "%s: xvlst_add failed i=%ld [rc=%ld]\n",
+                    __func__, (long)i, (long)j);
                 rc = -1;
                 break;
             }
@@ -181,7 +181,10 @@ test_xvlst(size_t capacity)
 
             (void) snprintf(xvr.r[j].name, sizeof(xvr.r[j].name)-1, "NN%ld", (long)j);
             xvr.r[j].index = (size_t)j;
+
+            dump(NULL, stdout, &xvr, 0);
         }
+        if (rc) break;
         dump("filled xvlst", stdout, &xvr, 1);
 
         rc = xvlst_del((struct xvlst*)&xvr, 3);
@@ -190,12 +193,13 @@ test_xvlst(size_t capacity)
                 __func__, rc);
             break;
         }
+        dump("deleted 3rd", stdout, &xvr, 1);
 
         rc = xvlst_del((struct xvlst*)&xvr, 3);
         assert(EALREADY == rc);
         rc = 0;
 
-        rc = xvlst_del((struct xvlst*)&xvr, xvr.border + 1);
+        rc = xvlst_del((struct xvlst*)&xvr, xvr.last + 1);
         assert(ERANGE == rc);
         rc = 0;
 
@@ -251,6 +255,36 @@ test_xvlst(size_t capacity)
         }
         if (rc) break;
         dump("Elements added", stdout, &xvr, 1);
+
+        lj = xvr.len-1;
+        if ((0 != xvlst_del((struct xvlst*)&xvr, 2)) ||
+            (0 != xvlst_del((struct xvlst*)&xvr, lj))) {
+                (void) fprintf(stderr, "xvlst_del:%ld failed\n",
+                    (long)__LINE__);
+                rc = -1;
+                break;
+        }
+        dump("deleted #2 and last", stdout, &xvr, 0);
+
+        j = xvlst_add((struct xvlst*)&xvr, sizeof(struct rec), 10);
+        if (j < 0) {
+            (void) fprintf(stderr, "xvlst_add:%ld failed\n",
+                    (long)__LINE__);
+            break;
+        }
+        assert(j == 2);
+        (void) snprintf(xvr.r[j].name, sizeof(xvr.r[j].name)-1, "QQ%ld", (long)j);
+        dump("added 2nd", stdout, &xvr, 0);
+
+        j = xvlst_add((struct xvlst*)&xvr, sizeof(struct rec), 10);
+        if (j < 0) {
+            (void) fprintf(stderr, "xvlst_add:%ld failed\n",
+                    (long)__LINE__);
+            break;
+        }
+        assert(j == lj);
+        (void) snprintf(xvr.r[j].name, sizeof(xvr.r[j].name)-1, "QQ%ld", (long)j);
+        dump("added last", stdout, &xvr, 1);
 
     } while(0);
 

@@ -54,20 +54,21 @@ xvlst_reserve(struct xvlst *l, size_t new_max, size_t blksz, size_t growblk)
         return 0;
 
     old_max = l->max_len;
-    rc = xvec_reserve((struct xvec*)l, new_max, blksz, growblk);
 
+    rc = xvec_reserve((struct xvec*)l, new_max, blksz, growblk);
     if (0 != rc)
         return rc;
 
     if (l->max_len <= old_max)
         return rc;
 
-    l->taken = realloc(l->taken, l->max_len * blksz);
+    l->taken = realloc(l->taken, l->max_len);
     if (NULL == l->taken)
         return -1;
 
-     (void) memset(&l->taken[old_max], 0, l->max_len - old_max);
-     if (l->avail < 0)
+    (void) memset(&l->taken[old_max], 0, l->max_len - old_max);
+
+    if (l->avail < 0)
         l->avail = old_max;
 
      return 0;
@@ -89,30 +90,33 @@ xvlst_add(struct xvlst *l, size_t blksz, size_t growblk)
     char *found = NULL;
 
     assert(l);
+    assert(l->avail < (ssize_t)l->max_len);
 
     if (0 != xvlst_expand(l, 1, blksz, growblk))
         return -ENOMEM;
 
-    i = l->avail;
-    if (i < 0)
+    if (l->avail < 0)
         return -1;
 
+    i = l->avail;
     l->taken[i] = 1;
 
-    if (i >= (ssize_t)l->max_len) {
-        l->avail = -1;
+    if ((ssize_t)l->last < i)
+        l->last = (ssize_t)i;
+
+    if (i == (ssize_t)l->last) {
+        l->avail = i + 1;
+        if (l->avail >= (ssize_t)l->max_len)
+            l->avail = -1;
+        else
+            assert(0 == l->taken[l->avail]);
     }
-    else if ((ssize_t)l->border <= (i + 1)) {
-        found = (0 == l->taken[i+1]) ? &l->taken[i+1] : NULL;
-    }
+    else if (0 == l->taken[i+1])
+        l->avail = i + 1;
     else {
-        found = memchr(&l->taken[i+1], 0, l->border - (size_t)i);
+        found = memchr(&l->taken[i+1], 0, l->max_len - (size_t)i - 1);
+        l->avail = found ? (found - &l->taken[0]) : -1;
     }
-
-    l->avail = found ? (found - &l->taken[0]) : -1;
-
-    if (i > (ssize_t)l->border)
-        l->border = i;
 
     l->len++;
 
@@ -125,7 +129,7 @@ xvlst_del(struct xvlst *l, size_t index)
 {
     assert(l);
 
-    if (index > l->border)
+    if (index > l->last)
         return ERANGE;
 
     if (0 == l->taken[index])
