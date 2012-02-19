@@ -25,7 +25,7 @@ xvec_reserve(struct xvec *v, size_t new_max, size_t blksz, size_t growblk)
     nblk = (1 + (new_max-1)/growblk) * growblk;
 
     p = realloc(v->data, nblk * blksz);
-    if (NULL == v->data)
+    if (NULL == p)
         return -1;
 
     v->data = p;
@@ -50,6 +50,8 @@ xvlst_reserve(struct xvlst *l, size_t new_max, size_t blksz, size_t growblk)
     size_t old_max = 0;
 
     assert(l);
+    if (l->max_len >= new_max)
+        return 0;
 
     old_max = l->max_len;
     rc = xvec_reserve((struct xvec*)l, new_max, blksz, growblk);
@@ -65,6 +67,9 @@ xvlst_reserve(struct xvlst *l, size_t new_max, size_t blksz, size_t growblk)
         return -1;
 
      (void) memset(&l->taken[old_max], 0, l->max_len - old_max);
+     if (l->avail < 0)
+        l->avail = old_max;
+
      return 0;
 }
 
@@ -78,12 +83,15 @@ xvlst_expand(struct xvlst *l, size_t plus, size_t blksz, size_t growblk)
 
 
 ssize_t
-xvlist_add(struct xvlst *l)
+xvlst_add(struct xvlst *l, size_t blksz, size_t growblk)
 {
     ssize_t i = -1;
     char *found = NULL;
 
     assert(l);
+
+    if (0 != xvlst_expand(l, 1, blksz, growblk))
+        return -ENOMEM;
 
     i = l->avail;
     if (i < 0)
@@ -113,11 +121,11 @@ xvlist_add(struct xvlst *l)
 
 
 int
-xvlist_del(struct xvlst *l, size_t index)
+xvlst_del(struct xvlst *l, size_t index)
 {
     assert(l);
 
-    if (index >= l->border)
+    if (index > l->border)
         return ERANGE;
 
     if (0 == l->taken[index])

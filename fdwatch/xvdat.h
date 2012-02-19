@@ -43,10 +43,10 @@ int
 xvlst_expand(struct xvlst *l, size_t plus, size_t blksz, size_t growblk);
 
 ssize_t
-xvlist_add(struct xvlst *l);
+xvlst_add(struct xvlst *l, size_t blksz, size_t growblk);
 
 int
-xvlist_del(struct xvlst *l, size_t index);
+xvlst_del(struct xvlst *l, size_t index);
 
 
 #ifdef __cplusplus
