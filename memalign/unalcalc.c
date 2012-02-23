@@ -9,6 +9,14 @@
 #include <stdlib.h>
 #include <strings.h>
 
+#if !defined(MAP_ANONYMOUS)
+    #ifdef MAP_ANON
+        #define MAP_ANONYMOUS MAP_ANON
+    #else
+        #error "MAP_ANON[YMOUS] is amiss"
+    #endif
+#endif
+
 
 static u_long
 align128bit_offset(void* p, void** ap)
