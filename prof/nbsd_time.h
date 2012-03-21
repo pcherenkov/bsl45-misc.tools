@@ -37,14 +37,25 @@
 
 #include <sys/types.h>
 
+#ifndef TIMEVAL_TO_TIMESPEC
 #define	TIMEVAL_TO_TIMESPEC(tv, ts) {					\
 	(ts)->tv_sec = (tv)->tv_sec;					\
 	(ts)->tv_nsec = (tv)->tv_usec * 1000;				\
 }
+#endif
+
+#ifndef TIMESPEC_TO_TIMEVAL
 #define	TIMESPEC_TO_TIMEVAL(tv, ts) {					\
 	(tv)->tv_sec = (ts)->tv_sec;					\
 	(tv)->tv_usec = (ts)->tv_nsec / 1000;				\
 }
+#endif
+
+/**
+ * Below are BSD macros, these are usually defined when compiling
+ * BSD code.
+ */
+#if !defined(__BSD) && !defined(__USE_BSD)
 
 /* Operations on timevals. */
 #define	timerclear(tvp)		(tvp)->tv_sec = (tvp)->tv_usec = 0
@@ -72,6 +83,17 @@
 		}							\
 	} while (0)
 
+#endif /* !defined(__BSD) && !defined(__USE_BSD) */
+
+
+/* Operations on timespec are available on NetBSD, yet hidden
+ * from non-kernel source on FreeBSD and unavailable altogether
+ * in userland Linux headers.
+ * However, the API is known and it's safe to assume that
+ * if one of the calls is there, so should be the rest.
+ */
+#if !defined(timespecclear)
+
 /* Operations on timespecs. */
 #define	timespecclear(tsp)		(tsp)->tv_sec = (tsp)->tv_nsec = 0
 #define	timespecisset(tsp)		((tsp)->tv_sec || (tsp)->tv_nsec)
@@ -98,6 +120,9 @@
 		}							\
 	} while (0)
 
+#endif /* !defined(timespecclear) */
+
+
 /* --- stuff got cut here - kostja, niels --- */
 
-#endif /* !_SYS_TIME_H_ */
+#endif /* !NBSD_SYS_TIME_H_ */
