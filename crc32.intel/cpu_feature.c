@@ -80,54 +80,51 @@ crc32c_hw(u_int32_t crc, unsigned char const *p, size_t len)
 static void
 toggle_x86_flags (long mask, long* orig, long* toggled)
 {
-	long forig = 0, fres = 0;
-
 #if defined (__i386__)
-	asm (
+	asm __volatile__ (
 		"pushfl; popl %%eax; movl %%eax, %0; xorl %2, %%eax; "
 		"pushl %%eax; popfl; pushfl; popl %%eax; pushl %0; popfl "
-		: "=r" (forig), "=a" (fres)
-		: "m" (mask)
+		: "=b" (*orig), "=a" (*toggled)
+		: "D" (mask)
 	);
 #elif __x86_64__
-	asm (
+	asm __volatile__ (
 		"pushfq; popq %%rax; movq %%rax, %0; xorq %2, %%rax; "
 		"pushq %%rax; popfq; pushfq; popq %%rax; pushq %0; popfq "
-		: "=r" (forig), "=a" (fres)
-		: "m" (mask)
+		: "=b" (*orig), "=a" (*toggled)
+		: "D" (mask)
 	);
 #endif
-
-	if (orig) 		*orig = forig;
-	if (toggled) 	*toggled = fres;
-	return;
 }
 
 
 /* is CPUID instruction available ? */
 static int
-can_cpuid ()
+can_cpuid (int *err)
 {
-	long of = -1, tf = -1;
+	long orig = -1, toggled = -1;
 
 	/* x86 flag register masks */
 	enum {
 		cpuf_AC = (1 << 18), 	/* bit 18 */
-		cpuf_ID = (1 << 21)		/* bit 21 */
+		cpuf_ID = (1 << 21)	/* bit 21 */
 	};
 
+	enum { ERR_i386 = -10, ERR_NO_CPUID = -11 };
 
 	/* check if AC (alignment) flag could be toggled:
 		if not - it's i386, thus no CPUID
 	*/
-	toggle_x86_flags (cpuf_AC, &of, &tf);
-	if ((of & cpuf_AC) == (tf & cpuf_AC)) {
+	toggle_x86_flags (cpuf_AC, &orig, &toggled);
+	if ((orig & cpuf_AC) == (toggled & cpuf_AC)) {
+		*err = ERR_i386;
 		return 0;
 	}
 
 	/* next try toggling CPUID (ID) flag */
-	toggle_x86_flags (cpuf_ID, &of, &tf);
-	if ((of & cpuf_ID) == (tf & cpuf_ID)) {
+	toggle_x86_flags (cpuf_ID, &orig, &toggled);
+	if ((orig & cpuf_ID) == (toggled & cpuf_ID)) {
+		*err = ERR_NO_CPUID;
 		return 0;
 	}
 
@@ -165,9 +162,11 @@ int
 cpu_has (unsigned int feature)
 {
 	long info = 1, reg[4] = {0,0,0,0};
+	int err = 0;
 
-	if (!can_cpuid ())
-		return -EINVAL;
+	/* TODO: in AMD64 cpuid is always there */
+	if (!can_cpuid(&err))
+		return err;
 
 	if (feature > LEN_cpu_ftr)
 		return -ERANGE;
