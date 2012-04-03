@@ -1,5 +1,5 @@
 /* @(#) test module to alternate thru different writing techniques */
-/* compile with gcc -pthread flag (*not* -lpthread, s'il vous plait) */
+/* gcc -pthread -W -Wall --pedantic -g -o wbuft wbuft.c */
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -61,7 +61,8 @@ enum {
     SYNC_DATA   = 2,
     FALLOC      = (1 << 2),
     FALLOC_SZ   = (1 << 3),
-    SYNC_THREAD = (1 << 4)
+    SYNC_THREAD = (1 << 4),
+    SEQ_WRITE   = (1 << 5)
 };
 
 struct test_spec {
@@ -243,11 +244,12 @@ writev_nbuf (int fd, const char* buf, size_t len, const struct test_spec* sp)
     chunk_len = (ssize_t)(len / sp->num_chunks);
     assert (chunk_len >= 1);
 
-    if (-1 == lseek (fd, 0, SEEK_SET)) {
-        err = errno;
-        perror ("lseek");
-        return -err;
-    }
+    if (0 == (sp->mode_flags & SEQ_WRITE))
+        if (-1 == lseek (fd, 0, SEEK_SET)) {
+            err = errno;
+            perror ("lseek");
+            return -err;
+        }
 
     iov = calloc (sp->num_chunks, sizeof(iov[0]));
     if (!iov) {
@@ -294,11 +296,12 @@ write_nbuf (int fd, const char* buf, size_t len, const struct test_spec* sp)
 
     assert (buf && sp);
 
-    if (-1 == lseek (fd, 0, SEEK_SET)) {
-        err = errno;
-        perror ("lseek");
-        return -err;
-    }
+    if (0 == (sp->mode_flags & SEQ_WRITE))
+        if (-1 == lseek (fd, 0, SEEK_SET)) {
+            err = errno;
+            perror ("lseek");
+            return -err;
+        }
     for (i = 0; i < sp->niter; ++i) {
         nwr = write (fd, buf, len);
         if (nwr != (ssize_t)len) {
@@ -440,6 +443,7 @@ usage_exit (const char* appname)
 #endif
     (void) fprintf (stderr, "  -S = fsync() after each write\n");
     (void) fprintf (stderr, "  -T = sync in a thread\n");
+    (void) fprintf (stderr, "  -Q = do not re-position to beginning each iteration\n");
 
     (void) fputc ('\n', stdout);
     exit (1);
@@ -455,8 +459,12 @@ read_opt (int argc, char* const argv[], struct test_spec* sp)
     assert (argv && sp);
 
     (void) fputs ("Options: ", stdout);
-    while (-1 != (opt = getopt (argc, argv, "ktfaidDSI:N:FTU:"))) {
+    while (-1 != (opt = getopt (argc, argv, "ktfaidDSI:N:FTU:Q"))) {
         switch (opt) {
+            case 'Q':
+                sp->mode_flags |= SEQ_WRITE;
+                (void) fputs ("SEQ ", stdout);
+                break;
             case 'T':
                 sp->mode_flags |= SYNC_THREAD;
                 (void) fputs ("THREAD ", stdout);
