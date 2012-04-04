@@ -7,7 +7,7 @@
 #include <time.h>
 
 #include "crc32.h"
-#include "cpu_feature.h"
+#include "cpu_fi.h"
 
 int main (int argc, char* const argv[])
 {
@@ -17,7 +17,6 @@ int main (int argc, char* const argv[])
 	unsigned char *buf = NULL;
 	static const long MAX_LEN = 1024*1024*1000*2;
 	clock_t clk[2] = {0,0}, clk_hw = 0, clk_sw = 0;
-	int sse42 = 0;
 
 	if (argc < 3) {
 		(void) fprintf (stderr, "Usage: %s seed length\n", argv[0]);
@@ -38,20 +37,9 @@ int main (int argc, char* const argv[])
 		return EINVAL;
 	}
 
-	sse42 = cpu_has (cpuf_sse4_2);
-	if (-ERANGE == sse42) {
-		(void) fprintf (stderr, "%s: invalid paramater to cpu_has ()\n",
-			argv[0]);
-		return ERANGE;
-	}
-	if (0 == sse42) {
+	if (0 == sse42_enabled_cpu()) {
 		(void) fprintf (stderr, "%s: sorry, this CPU does not support SSE 4.2 "
 			"and cannot calculate CRC32 in hardware\n", argv[0]);
-		return EINVAL;
-	}
-	if (1 != sse42) {
-		(void) fprintf(stderr, "%s: sorry, cannot determine CPU capability, err=[%d]\n",
-			argv[0], sse42);
 		return EINVAL;
 	}
 
