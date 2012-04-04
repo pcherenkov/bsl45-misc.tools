@@ -26,17 +26,15 @@ crc32c_hw(u_int32_t crc, unsigned char const *p, size_t len)
 {
 #define SCALE_F	sizeof(unsigned long)
 	size_t nwords = len / SCALE_F, nbytes = len % SCALE_F;
-	unsigned long *pword = (unsigned long *)p;
-	unsigned char *pbyte = NULL;
+	unsigned long *pword;
+	unsigned char *pbyte;
 
-
-	for (; nwords--; ++pword) {
+	for (pword = (unsigned long *)p; nwords--; ++pword)
 #if defined (__x86_64__)
 		crc = (u_int32_t)_mm_crc32_u64((u_int64_t)crc, *pword);
 #elif defined (__i386__)
 		crc = _mm_crc32_u32(crc, *pword);
 #endif
-	}
 
 	if (nbytes)
 		for (pbyte = (unsigned char*)pword; nbytes--; ++pbyte)
