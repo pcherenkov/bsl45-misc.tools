@@ -87,8 +87,9 @@ read_symbols(const char* fpath, FILE* out)
             else
                 status = "BAD";
 
-            (void) fprintf(out, "%ld\t%s\t%s vma=%lu size=%lu val=%lu\n", i+1, status,
-                symbol_table[i]->name, vma, size, symbol_table[i]->value);
+            (void) fprintf(out, "%ld\t%s\t%s vma=%lu size=%lu val=%lu flags=%lx\n", i+1, status,
+                symbol_table[i]->name, vma, size, symbol_table[i]->value,
+                (unsigned long)symbol_table[i]->flags);
         }
 
         (void) fprintf(out, "%s: %lu/%lu symbols read/good\n", fpath, nsym, count);
