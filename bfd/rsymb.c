@@ -78,9 +78,11 @@ read_symbols(const char* fpath, FILE* out)
             vma = bfd_get_section_vma(h, sect);
             size = bfd_get_section_size(sect);
 
-            if (vma + symbol_table[i]->value > 0 && symbol_table[i]->value < size) {
-                ++count;
-                status = "GOOD";
+            if ((symbol_table[i]->flags & BSF_FUNCTION) &&
+                (vma + symbol_table[i]->value > 0)      &&
+                (symbol_table[i]->value < size)) {
+                    ++count;
+                    status = "GOOD";
             }
             else
                 status = "BAD";
