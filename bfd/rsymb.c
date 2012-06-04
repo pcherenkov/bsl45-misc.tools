@@ -16,6 +16,7 @@ read_symbols(const char* fpath, FILE* out)
     struct bfd_section *sect = NULL;
     unsigned long vma = 0, size = 0, count = 0;
     char **matching = NULL, *s = NULL;
+    const char *status = NULL;
 
     int rc = -1;
 
@@ -77,13 +78,18 @@ read_symbols(const char* fpath, FILE* out)
             vma = bfd_get_section_vma(h, sect);
             size = bfd_get_section_size(sect);
 
-            (void) fprintf(out, "%ld\t%s vma=%lu size=%lu val=%lu\n", i,
-                symbol_table[i]->name, vma, size, symbol_table[i]->value);
-            if (vma + symbol_table[i]->value > 0 && symbol_table[i]->value < size)
+            if (vma + symbol_table[i]->value > 0 && symbol_table[i]->value < size) {
                 ++count;
+                status = "GOOD";
+            }
+            else
+                status = "BAD";
+
+            (void) fprintf(out, "%ld\t%s\t%s vma=%lu size=%lu val=%lu\n", i+1, status,
+                symbol_table[i]->name, vma, size, symbol_table[i]->value);
         }
 
-        (void) fprintf(out, "%s: %lu symbols read\n", fpath, count);
+        (void) fprintf(out, "%s: %lu/%lu symbols read/good\n", fpath, nsym, count);
 
         rc = 0;
     } while(0);
