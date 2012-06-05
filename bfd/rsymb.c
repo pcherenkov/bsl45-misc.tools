@@ -7,6 +7,9 @@
 
 #include <bfd.h>
 
+static int s_val;
+int g_val;
+
 static int
 read_symbols(const char* fpath, FILE* out)
 {
@@ -22,6 +25,7 @@ read_symbols(const char* fpath, FILE* out)
     unsigned long isfunc = 0;
 
     assert(fpath && out);
+    s_val = g_val = 1;
 
     do {
         bfd_init();
@@ -49,6 +53,11 @@ read_symbols(const char* fpath, FILE* out)
             free(matching);
         }
 
+        if (bfd_target_elf_flavour == h->xvec->flavour)
+            (void) fputs("ELF file format\n", out);
+        else
+            (void) fprintf(out, "file format: %ld\n",
+                        (long)h->xvec->flavour);
 
         storage_needed = bfd_get_symtab_upper_bound(h);
         if (storage_needed <= 0) {
