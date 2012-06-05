@@ -87,7 +87,8 @@ read_symbols(const char* fpath, FILE* out)
 
             vma = bfd_get_section_vma(h, sect);
             size = bfd_get_section_size(sect);
-            isfunc = (unsigned long)symbol_table[i]->flags & mask;
+            isfunc = (bfd_target_elf_flavour == h->xvec->flavour) ?
+                        (unsigned long)symbol_table[i]->flags & mask : 1;
 
             if (isfunc && ((vma + symbol_table[i]->value) > 0) &&
                 (symbol_table[i]->value < size)) {
