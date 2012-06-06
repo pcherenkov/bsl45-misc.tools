@@ -1,5 +1,6 @@
 /* @(#) read symbols using libbfd from bintools */
 /* gcc -W -Wall --pedantic -ggdb -o rsymb -Wl,--no-as-needed -lbfd ./rsymb.c  */
+/* gcc -W -Wall --pedantic -ggdb -I/opt/local/include -L/opt/local/lib -o rsymb -lbfd ./rsymb.c */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -98,7 +99,7 @@ read_symbols(const char* fpath, FILE* out)
             else
                 status = "BAD";
 
-            (void) fprintf(out, "%ld\t%s\t%s vma=%lu size=%lu val=%lu flags=0x%08lx\n", i+1, status,
+            (void) fprintf(out, "%ld\t%s\t%s vma=0x%08lx size=%lu val=0x%lx flags=0x%08lx\n", i+1, status,
                 symbol_table[i]->name, vma, size, symbol_table[i]->value,
                 (unsigned long)symbol_table[i]->flags);
         }
