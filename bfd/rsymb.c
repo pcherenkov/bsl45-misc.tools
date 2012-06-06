@@ -11,6 +11,11 @@
 static int s_val;
 int g_val;
 
+struct frame {
+    struct frame *next;
+    void *ret;
+};
+
 static int
 read_symbols(const char* fpath, FILE* out)
 {
@@ -21,12 +26,24 @@ read_symbols(const char* fpath, FILE* out)
     unsigned long vma = 0, size = 0, count = 0, mask = BSF_FUNCTION;
     char **matching = NULL, *s = NULL;
     const char *status = NULL;
+#ifdef __GNUC__
+    void *frame_addr = NULL;
+#endif
 
     int rc = -1;
     unsigned long isfunc = 0;
 
     assert(fpath && out);
     s_val = g_val = 1;
+
+#ifdef __GNUC__
+    frame_addr = __builtin_frame_address(0);
+    (void) fprintf(out, "%s frame = %p", __func__, frame_addr);
+    if (frame_addr) {
+        fprintf(out, " return_addr=%p", ((struct frame*)frame_addr)->ret);
+    }
+    (void) fputc('\n', out);
+#endif
 
     do {
         bfd_init();
