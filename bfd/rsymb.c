@@ -16,6 +16,21 @@ struct frame {
     void *ret;
 };
 
+
+#if defined(USE_RBP)
+#define GET_CURRENT_FRAME(f)                \
+    do {                                    \
+        register void *__f asm("rbp");      \
+        f = __f;                            \
+    } while(0)
+#elif defined(__GNUC__)
+#define GET_CURRENT_FRAME(f)                \
+    do {                                    \
+        f = __builtin_frame_address(0);     \
+    } while(0)
+#endif
+
+
 static int
 read_symbols(const char* fpath, FILE* out)
 {
@@ -37,7 +52,7 @@ read_symbols(const char* fpath, FILE* out)
     s_val = g_val = 1;
 
 #ifdef __GNUC__
-    frame_addr = __builtin_frame_address(0);
+    GET_CURRENT_FRAME(frame_addr);
     (void) fprintf(out, "%s frame = %p", __func__, frame_addr);
     if (frame_addr) {
         fprintf(out, " return_addr=%p", ((struct frame*)frame_addr)->ret);
