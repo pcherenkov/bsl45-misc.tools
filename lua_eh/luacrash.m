@@ -1,5 +1,5 @@
 /* MacOS X: g++-mp-4.6 -I/usr/local/include/luajit-2.0 -L/usr/local/lib -lobjc -lluajit-51 -pagezero_size 10000 -image_base 100000000 -fobjc-exceptions -o ljc.tt ./luacrash.m */
-/* Ubuntu Linux: g++ -lobjc -lluajit-5.1 -I/usr/include/luajit-2.0 -fobjc-exceptions -Wl,--no-as-needed -o ljc.tt ./luacrash.m */
+/* Ubuntu Linux: g++ -I/usr/include/luajit-2.0 -fobjc-exceptions -Wl,--no-as-needed -lobjc -lluajit-5.1 -o ljc.tt ./luacrash.m */
 
 #include <objc/Object.h>
 #include <objc/runtime.h>
@@ -47,7 +47,7 @@ void main()
 {
     lua_State *L = luaL_newstate();
     luaL_openlibs(L);
-    lua_atpanic(L, box_lua_panic);
+    /* lua_atpanic(L, box_lua_panic); */
     @try {
         test(L);
     } @catch (Exception *e) {
