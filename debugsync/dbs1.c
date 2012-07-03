@@ -91,11 +91,11 @@ ds_lookup(const char *point_name)
 
 
 static inline int
-wait_on(const char *point_name, bool *enabled)
+wait_on(const struct ds_point *pt)
 {
 	int rc = 0;
-	while (rc == 0 && strncmp(ds.signal, point_name, sizeof(ds.signal)) != 0) {
-		if (enabled && *enabled == false)
+	while (rc == 0 && strcmp(ds.signal, pt->name) != 0) {
+		if (!pt->is_enabled)
 			return -1;
 		rc = pthread_cond_wait(&ds.cond, &ds.mtx);
 	}
@@ -115,7 +115,7 @@ ds_set(const char *point_name, bool enable)
 		if (pt != NULL) {
 			pt->is_enabled = enable;
 			if (pt->is_enabled) {
-				rc = wait_on(point_name, &pt->is_enabled);
+				rc = wait_on(pt);
 				pt->is_enabled = false;
 			}
 		}
@@ -128,8 +128,10 @@ ds_set(const char *point_name, bool enable)
 int
 ds_wait(const char *point_name)
 {
+	int rc = 0;
 	(void) pthread_mutex_lock(&ds.mtx);
-		int rc = wait_on(point_name, NULL);
+		struct ds_point *pt = ds_lookup(point_name);
+		rc = pt ? wait_on(pt) : -1;
 	(void) pthread_mutex_unlock(&ds.mtx);
 
 	return rc;
@@ -139,11 +141,17 @@ ds_wait(const char *point_name)
 int
 ds_signal(const char *point_name)
 {
+	int rc = 0;
 	(void) pthread_mutex_lock(&ds.mtx);
-		(void) strncpy(ds.signal, point_name, sizeof(ds.signal)-1);
-		ds.signal[sizeof(ds.signal)-1] = '\0';
+		struct ds_point *pt = ds_lookup(point_name);
+		if (pt) {
+			(void) strncpy(ds.signal, point_name, sizeof(ds.signal)-1);
+			ds.signal[sizeof(ds.signal)-1] = '\0';
 
-		int rc = pthread_cond_signal(&ds.cond);
+			rc = pthread_cond_signal(&ds.cond);
+		}
+		else
+			rc = -1;
 	(void) pthread_mutex_unlock(&ds.mtx);
 
 	return rc;
