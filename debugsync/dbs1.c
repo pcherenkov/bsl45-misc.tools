@@ -81,11 +81,9 @@ ds_add(const char *point_name)
 static struct ds_point*
 ds_lookup(const char *point_name)
 {
-	for(size_t i = 0; i < ds.count; ++i) {
+	for(size_t i = 0; i < ds.count; ++i)
 		if (strcmp(point_name, ds.point[i].name) == 0)
 			return &ds.point[i];
-	}
-
 	return NULL;
 }
 
