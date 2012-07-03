@@ -5,6 +5,14 @@
 
 #include <stdbool.h>
 
+enum {
+	/* Maximum length of a sync point's name. */
+	DS_MAX_POINT_NAME_LEN = 32,
+	/* Maximum number of sync points allowed. */
+	DS_MAX_POINT_COUNT  = 256
+};
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif

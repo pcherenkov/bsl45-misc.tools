@@ -9,12 +9,6 @@
 #include <pthread.h>
 #include "debugsync.h"
 
-#ifndef DS_SIG_MAXLEN
-	#define DS_SIG_MAXLEN	32
-#endif
-#ifndef DS_MAX_COUNT
-	#define	DS_MAX_COUNT	1024
-#endif
 
 struct ds_point {
 	char	*name;
@@ -25,9 +19,9 @@ struct ds_point {
 static struct ds_global {
 	pthread_mutex_t	mtx;
 	pthread_cond_t	cond;
-	char		signal[DS_SIG_MAXLEN + 1];
+	char		signal[DS_MAX_POINT_NAME_LEN + 1];
 
-	struct ds_point	point[DS_MAX_COUNT];
+	struct ds_point	point[DS_MAX_POINT_COUNT];
 	size_t		count;
 } ds;
 
@@ -62,12 +56,13 @@ ds_destroy()
 static struct ds_point*
 ds_add(const char *point_name)
 {
-	if (ds.count >= DS_MAX_COUNT)
+	if (ds.count >= DS_MAX_POINT_COUNT)
 		return NULL;
 
 	size_t i = ds.count;
 
-	ds.point[i].name = strndup(point_name, DS_SIG_MAXLEN);
+	ds.point[i].name = strndup(point_name,
+				DS_MAX_POINT_NAME_LEN);
 	if (ds.point[i].name == NULL)
 		return NULL;
 
