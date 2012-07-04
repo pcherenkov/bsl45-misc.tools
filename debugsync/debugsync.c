@@ -15,6 +15,8 @@
 struct ds_point {
 	char	*name;
 	bool	is_enabled;
+	bool	is_active;
+	ssize_t block_count;
 };
 
 
@@ -69,6 +71,9 @@ ds_add(const char *point_name)
 		return NULL;
 
 	ds.point[i].is_enabled = false;
+	ds.point[i].is_active = false;
+	ds.point[i].block_count = 0;
+
 	++ds.count;
 
 	return &ds.point[i];
@@ -88,21 +93,6 @@ ds_lookup(const char *point_name, const char *origin, bool must_exist)
 }
 
 
-static inline int
-wait_on(const struct ds_point *pt, const char *origin)
-{
-	int rc = 0;
-	while (rc == 0 && strcmp(ds.signal, pt->name) != 0) {
-		if (!pt->is_enabled) {
-			(void) fprintf(stderr, "%s:%s ERR: point [%s] is disabled\n",
-				origin ? origin : "", __func__, pt->name);
-			return -1;
-		}
-		rc = pthread_cond_wait(&ds.cond, &ds.mtx);
-	}
-	return rc;
-}
-
 
 int
 ds_set(const char *point_name, bool enable, const char *origin)
@@ -114,15 +104,38 @@ ds_set(const char *point_name, bool enable, const char *origin)
 			point_name, (int)enable);
 
 	(void) pthread_mutex_lock(&ds.mtx);
+	do {
 		if ((pt = ds_lookup(point_name, origin, false)) == NULL)
 			pt = ds_add(point_name);
-		if (pt != NULL) {
-			pt->is_enabled = enable;
-			if (pt->is_enabled) {
-				rc = wait_on(pt, origin);
-				pt->is_enabled = false;
-			}
+		if (pt == NULL)
+			break;
+
+		pt->is_enabled = enable;
+		if (!pt->is_enabled)
+			break;
+
+		/* Set to true by waiting threads. */
+		pt->is_active	= false;
+
+		/* It is no longer feasible to join in ds_wait(). */
+		pt->is_signalled = false;
+
+		rc = pthread_cond_broadcast(&ds.cond);
+
+		while (rc == 0 && (pt->block_count > 0) &&
+			!pt->is_active && strcmp(ds.signal, point_name) != 0)
+				rc = pthread_cond_wait(&ds.cond, &ds.mtx);
+
+		pt->is_active	= false;
+
+		if (!pt->is_signalled) {
+			/* Woken up not by signal but by another sync point? */
+			rc = -1;
+			break;
 		}
+
+		/* TODO: how do we guard against re-entry ? */
+	} while(0);
 	(void) pthread_mutex_unlock(&ds.mtx);
 
 	(void) fprintf(stderr, "%s:%s [%s, %d] OUT with rc=%d\n",
@@ -140,9 +153,35 @@ ds_wait(const char *point_name, const char *origin)
 			origin ? origin : "", __func__, point_name);
 
 	(void) pthread_mutex_lock(&ds.mtx);
+	do {
+		while (rc == 0 && strcmp(ds.signal, point_name) != 0)
+			rc = pthread_cond_wait(&ds.cond, &ds.mtx);
+
+		/* Woke up after a sync point has been reached. */
 		struct ds_point *pt = ds_lookup(point_name, origin, true);
-		rc = pt ? wait_on(pt, origin) : -1;
+		if (pt == NULL || (pt && !pt->is_enabled)) {
+			rc = -1;
+			break;
+		}
+
+		if (pt->is_signalled) {
+			/* Woken up by ds_signal() - wrong. */
+			rc = -1;
+			break;
+		}
+
+		/* Woken up by ds_set() - OK. */
+		pt->is_active = true;
+		pt->block_count++;
+	} while(0);
 	(void) pthread_mutex_unlock(&ds.mtx);
+
+	/* TODO: remove after DEBUG */
+	if (pt && !pt->is_enabled) {
+		(void) fprintf(stderr, "%s:%s point [%s] is disabled\n",
+			origin ? origin : "", __func__, point_name);
+		rc = -1;
+	}
 
 	(void) fprintf(stderr, "%s:%s [%s] OUT with rc=%d\n",
 			origin ? origin : "", __func__,
@@ -156,23 +195,28 @@ ds_signal(const char *point_name, const char *origin)
 {
 	int rc = 0;
 	(void) fprintf(stderr, "%s:%s [%s] IN\n",
-		origin ? origin : "", __func__, point_name);
+			origin ? origin : "", __func__, point_name);
 
 	(void) pthread_mutex_lock(&ds.mtx);
+	do {
 		struct ds_point *pt = ds_lookup(point_name, origin, true);
-		if (pt) {
-			(void) strncpy(ds.signal, point_name, sizeof(ds.signal)-1);
-			ds.signal[sizeof(ds.signal)-1] = '\0';
-
-			rc = pthread_cond_signal(&ds.cond);
-		}
-		else {
+		if (pt == NULL || (pt && !pt->is_enabled)) {
 			rc = -1;
+			break;
 		}
+
+		(void) strncpy(ds.signal, point_name, sizeof(ds.signal)-1);
+		ds.signal[sizeof(ds.signal)-1] = '\0';
+
+		pt->is_signalled = true;
+		pt->block_count--;
+
+		rc = pthread_cond_broadcast(&ds.cond);
+	} while(0);
 	(void) pthread_mutex_unlock(&ds.mtx);
 
 	(void) fprintf(stderr, "%s:%s [%s] OUT with rc=%d\n",
-		origin ? origin : "", __func__, point_name, rc);
+			origin ? origin : "", __func__, point_name, rc);
 	return rc;
 }
 
