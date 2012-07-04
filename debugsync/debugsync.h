@@ -34,11 +34,11 @@ void ds_destroy();
  * @param enable enable or disable the sync point.
  *
  */
-int ds_set(const char *point_name, bool enable);
+int ds_set(const char *point_name, bool enable, const char *origin);
 
-int ds_wait(const char *point_name);
+int ds_wait(const char *point_name, const char *origin);
 
-int ds_signal(const char *point_name);
+int ds_signal(const char *point_name, const char *origin);
 
 #ifdef __cplusplus
 }
