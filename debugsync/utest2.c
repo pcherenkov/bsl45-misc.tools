@@ -103,7 +103,7 @@ int main()
 			break;
 		}
 
-		rc = ds_exec("hollywood", true, __func__);
+		rc = DSYNC_SET("hollywood", true);
 		if (rc) break;
 
 		(void) fprintf(stderr, "%s: on we go.\n", __func__);

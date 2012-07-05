@@ -5,13 +5,19 @@
 
 #include <stdbool.h>
 
-enum {
-	/* Maximum length of a sync point's name. */
-	DS_MAX_POINT_NAME_LEN = 32,
-	/* Maximum number of sync points allowed. */
-	DS_MAX_POINT_COUNT  = 256
-};
+#ifdef NDEBUG
 
+#	define	DSYNC_SET(name, enable)
+#	define	DSYNC_WAIT(name)
+#	define	DSYNC_UNBLOCK(name)
+
+#else
+
+#	define	DSYNC_SET(name, enable)	ds_exec(name, enable, __func__)
+#	define	DSYNC_WAIT(name)	ds_wait(name, __func__)
+#	define	DSYNC_UNBLOCK(name)	ds_unblock(name, __func__)
+
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,6 +33,9 @@ int ds_init();
  */
 void ds_destroy();
 
+/**
+ * Disable all data sync points (defined so far).
+ */
 void ds_disable_all();
 
 /**
