@@ -55,7 +55,7 @@ syncpt(const char *name, unsigned int pnap, unsigned int anap, const char *origi
 			(void) fprintf(stderr, "%s: P-woke up\n", origin);
 		}
 
-		rc = ds_exec(name, true, origin);
+		rc = ds_exec(name, origin);
 		if (rc) break;
 
 		if (anap) {
@@ -92,7 +92,7 @@ int main()
 
 	(void) fprintf(stderr, "%s: started.\n", __func__);
 	do {
-		rc = ds_init();
+		rc = ds_init(true);
 		if (rc) break;
 
 		for (size_t i = 0; rc == 0 && i < THR_COUNT; ++i)
@@ -103,7 +103,7 @@ int main()
 			break;
 		}
 
-		rc = DSYNC_SET("hollywood", true);
+		rc = DSYNC_SET("hollywood");
 		if (rc) break;
 
 		(void) fprintf(stderr, "%s: on we go.\n", __func__);

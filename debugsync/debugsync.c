@@ -19,7 +19,9 @@
 #endif
 
 
-/* Module-scope numeric constants: */
+/*
+ * Module-scope numeric constants.
+ */
 enum {
 	/* Maximum length of a sync point's name. */
 	DS_MAX_POINT_NAME_LEN = 32,
@@ -28,7 +30,8 @@ enum {
 };
 
 
-/** Debug sync point data:
+/*
+ * Debug sync point data.
  */
 struct ds_point {
 	/* Unique name to use as ID. */
@@ -42,9 +45,13 @@ struct ds_point {
 };
 
 
-/** Module-scope variables in a single structure:
+/*
+ * Module-scope variables in a single structure.
  */
 static struct ds_global {
+	/* On/off switch for ALL debug sync operations. */
+	bool		activated;
+
 	/* Mutex, cond pair to signal state changes. */
 	pthread_mutex_t	mtx;
 	pthread_cond_t	cond;
@@ -58,21 +65,40 @@ static struct ds_global {
 } ds;
 
 
-/** Implementation:
+/*
+ * Implementation:
  */
 
 int
-ds_init()
+ds_init(bool active)
 {
-	ds.count = 0;
 	(void) memset(&ds.point[0], 0, sizeof(ds.point));
+
+	ds.activated	= active;
+	ds.count	= 0;
 # ifdef DEBUG
-	ds.log = stderr;
+	ds.log		= stderr;
 # endif
 
 	(void) pthread_mutex_init(&ds.mtx, NULL);
 	(void) pthread_cond_init(&ds.cond, NULL);
+
 	return 0;
+}
+
+
+static void
+disable_all()
+{
+	size_t flipped = 0;
+	for (size_t i = 0; i < ds.count; ++i) {
+		if (ds.point[i].is_enabled) {
+			ds.point[i].is_enabled = false;
+			++flipped;
+		}
+	}
+	if (flipped > 0)
+		pthread_cond_broadcast(&ds.cond);
 }
 
 
@@ -80,15 +106,19 @@ void
 ds_disable_all()
 {
 	(void) pthread_mutex_lock(&ds.mtx);
-		size_t flipped = 0;
-		for (size_t i = 0; i < ds.count; ++i) {
-			if (ds.point[i].is_enabled) {
-				ds.point[i].is_enabled = false;
-				++flipped;
-			}
-		}
-		if (flipped > 0)
-			pthread_cond_broadcast(&ds.cond);
+	if (ds.activated)
+		disable_all();
+	(void) pthread_mutex_unlock(&ds.mtx);
+}
+
+
+void
+ds_activate(bool active)
+{
+	(void) pthread_mutex_lock(&ds.mtx);
+		if (ds.activated)
+			disable_all(); /* Err out pending waits. */
+		ds.activated = active;
 	(void) pthread_mutex_unlock(&ds.mtx);
 }
 
@@ -106,7 +136,7 @@ ds_destroy()
 
 
 static struct ds_point*
-ds_add(const char *point_name)
+create_new(const char *point_name)
 {
 	if (ds.count >= DS_MAX_POINT_COUNT)
 		return NULL;
@@ -118,12 +148,9 @@ ds_add(const char *point_name)
 	if (ds.point[i].name == NULL)
 		return NULL;
 
-	/* It makes sense to enable by default,
-	 * considering the case when:
-	 *	ds_wait() creates the point *before*
-	 *	it has been created by ds_exec();
-	 * If a point *must* be disabled, it should
-	 * be done *explicitly* from ds_exec().
+	/* Create enabled points by default:
+	 * consider the case when ds_wait() creates a
+	 * sync point *before* control reaches ds_exec().
 	 */
 	ds.point[i].is_enabled = true;
 
@@ -137,7 +164,7 @@ ds_add(const char *point_name)
 
 
 static struct ds_point*
-ds_lookup(const char *point_name)
+look_up(const char *point_name)
 {
 	for(size_t i = 0; i < ds.count; ++i)
 		if (strcmp(point_name, ds.point[i].name) == 0)
@@ -147,13 +174,13 @@ ds_lookup(const char *point_name)
 
 
 static struct ds_point*
-ds_get(const char *point_name, const char *origin)
+acquire(const char *point_name, const char *origin)
 {
 	(void)origin;
 
-	struct ds_point *pt = ds_lookup(point_name);
+	struct ds_point *pt = look_up(point_name);
 	if (pt == NULL)
-		pt = ds_add(point_name);
+		pt = create_new(point_name);
 
 	if (pt == NULL) {
 		TRACE((void) fprintf(ds.log, "%s:%s failed to get [%s]\n",
@@ -165,7 +192,7 @@ ds_get(const char *point_name, const char *origin)
 
 
 int
-ds_exec(const char *point_name, bool enable, const char *origin)
+ds_enable(const char *point_name, bool enable, const char *origin)
 {
 	struct ds_point *pt = NULL;
 	int rc = 0;
@@ -177,11 +204,48 @@ ds_exec(const char *point_name, bool enable, const char *origin)
 
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
-		pt = ds_get(point_name, origin);
+		if (!ds.activated)
+			break;
+
+		pt = look_up(point_name);
 		if (pt == NULL)
 			break;
 
 		pt->is_enabled = enable;
+
+		/* If disabled - err out pending waits. */
+		if (!pt->is_enabled && pt->nblocked > 0)
+			rc = pthread_cond_broadcast(&ds.cond);
+
+	} while(0);
+	(void) pthread_mutex_unlock(&ds.mtx);
+
+	TRACE((void) fprintf(ds.log, "%s:%s [%s, %d] OUT with rc=%d\n",
+			origin ? origin : "",__func__,
+			point_name, (int)enable, rc));
+	return (pt == NULL) ? -1 : rc;
+}
+
+
+int
+ds_exec(const char *point_name, const char *origin)
+{
+	struct ds_point *pt = NULL;
+	int rc = 0;
+
+	(void)origin;
+	TRACE((void) fprintf(ds.log, "%s:%s [%s] IN\n",
+			origin ? origin : "",__func__,
+			point_name));
+
+	(void) pthread_mutex_lock(&ds.mtx);
+	do {
+		if (!ds.activated)
+			break;
+
+		pt = acquire(point_name, origin);
+		if (pt == NULL)
+			break;
 
 		if (pt->is_enabled && pt->in_syncwait) {
 			TRACE((void) fprintf(ds.log, "%s:%s [%s] is BUSY\n",
@@ -221,9 +285,9 @@ ds_exec(const char *point_name, bool enable, const char *origin)
 	} while(0);
 	(void) pthread_mutex_unlock(&ds.mtx);
 
-	TRACE((void) fprintf(ds.log, "%s:%s [%s, %d] OUT with rc=%d\n",
+	TRACE((void) fprintf(ds.log, "%s:%s [%s] OUT with rc=%d\n",
 			origin ? origin : "",__func__,
-			point_name, (int)enable, rc));
+			point_name, rc));
 	return (pt == NULL) ? -1 : rc;
 }
 
@@ -240,16 +304,13 @@ ds_wait(const char *point_name, const char *origin)
 
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
-		/* Since ds_wait() could be invoked *before* control reaches ds_exec(),
-		 * create a new sync point on the spot if not found.
-		 */
-		pt = ds_get(point_name, origin);
+		if (!ds.activated)
+			break;
+
+		pt = acquire(point_name, origin);
 		if (pt == NULL)
 			break;
 
-		/* Increment *BEFORE* wait() so that ds_unblock() will deal with
-		 * all wait()'s started before ds_exec().
-		 */
 		pt->nblocked++;
 
 		TRACE((void) fprintf(ds.log, "%s:%s [%s] WAIT with [%ld] blocked\n",
@@ -294,7 +355,10 @@ ds_unblock(const char *point_name, const char *origin)
 
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
-		pt = ds_lookup(point_name);
+		if (!ds.activated)
+			break;
+
+		pt = look_up(point_name);
 		if (pt == NULL) {
 			TRACE((void)fprintf(ds.log, "%s:%s [%s] does not exist\n",
 				origin ? origin: "", __func__, point_name));
