@@ -7,6 +7,7 @@
 #include <stdbool.h>
 
 #include <stdio.h>
+#include <assert.h>
 
 #include <pthread.h>
 #include "debugsync.h"
@@ -117,7 +118,13 @@ ds_add(const char *point_name)
 	if (ds.point[i].name == NULL)
 		return NULL;
 
-	/* Disabled points must be set so. */
+	/* It makes sense to enable by default,
+	 * considering the case when:
+	 *	ds_wait() creates the point *before*
+	 *	it has been created by ds_exec();
+	 * If a point *must* be disabled, it should
+	 * be done *explicitly* from ds_exec().
+	 */
 	ds.point[i].is_enabled = true;
 
 	ds.point[i].in_syncwait = false;
@@ -167,6 +174,7 @@ ds_exec(const char *point_name, bool enable, const char *origin)
 	TRACE((void) fprintf(ds.log, "%s:%s [%s, %d] IN\n",
 			origin ? origin : "",__func__,
 			point_name, (int)enable));
+
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
 		pt = ds_get(point_name, origin);
@@ -232,15 +240,24 @@ ds_wait(const char *point_name, const char *origin)
 
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
+		/* Since ds_wait() could be invoked *before* control reaches ds_exec(),
+		 * create a new sync point on the spot if not found.
+		 */
 		pt = ds_get(point_name, origin);
 		if (pt == NULL)
 			break;
 
+		/* Increment *BEFORE* wait() so that ds_unblock() will deal with
+		 * all wait()'s started before ds_exec().
+		 */
 		pt->nblocked++;
 
 		TRACE((void) fprintf(ds.log, "%s:%s [%s] WAIT with [%ld] blocked\n",
 			origin ? origin : "", __func__, pt->name, (long)pt->nblocked));
 
+		/* Wait for the point to reach "sync-wait" state,
+		 * interrupt the wait if sync point gets disabled.
+		 */
 		while (rc == 0 && !pt->in_syncwait && pt->is_enabled)
 			rc = pthread_cond_wait(&ds.cond, &ds.mtx);
 
@@ -277,10 +294,14 @@ ds_unblock(const char *point_name, const char *origin)
 
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
-		pt = ds_get(point_name, origin);
-		if (pt == NULL)
+		pt = ds_lookup(point_name);
+		if (pt == NULL) {
+			TRACE((void)fprintf(ds.log, "%s:%s [%s] does not exist\n",
+				origin ? origin: "", point_name));
 			break;
+		}
 
+		assert(pt->nblocked > 0);
 		--pt->nblocked;
 
 		TRACE((void) fprintf(ds.log, "%s:%s [%s] %ld blocked\n",
