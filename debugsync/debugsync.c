@@ -297,7 +297,7 @@ ds_unblock(const char *point_name, const char *origin)
 		pt = ds_lookup(point_name);
 		if (pt == NULL) {
 			TRACE((void)fprintf(ds.log, "%s:%s [%s] does not exist\n",
-				origin ? origin: "", point_name));
+				origin ? origin: "", __func__, point_name));
 			break;
 		}
 
