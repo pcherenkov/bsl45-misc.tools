@@ -90,14 +90,16 @@ ds_init(bool active)
 static void
 disable_all()
 {
-	size_t flipped = 0;
+	bool has_pending_waits = false;
 	for (size_t i = 0; i < ds.count; ++i) {
 		if (ds.point[i].is_enabled) {
 			ds.point[i].is_enabled = false;
-			++flipped;
+
+			if (ds.point[i].nblocked > 0)
+				has_pending_waits = true;
 		}
 	}
-	if (flipped > 0)
+	if (has_pending_waits)
 		pthread_cond_broadcast(&ds.cond);
 }
 
