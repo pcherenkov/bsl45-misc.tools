@@ -27,6 +27,8 @@ int ds_init();
  */
 void ds_destroy();
 
+void ds_disable_all();
+
 /**
  * Create a sync point or set status of an existing one.
  *
@@ -34,11 +36,11 @@ void ds_destroy();
  * @param enable enable or disable the sync point.
  *
  */
-int ds_set(const char *point_name, bool enable, const char *origin);
+int ds_exec(const char *point_name, bool enable, const char *origin);
 
 int ds_wait(const char *point_name, const char *origin);
 
-int ds_signal(const char *point_name, const char *origin);
+int ds_unblock(const char *point_name, const char *origin);
 
 #ifdef __cplusplus
 }
