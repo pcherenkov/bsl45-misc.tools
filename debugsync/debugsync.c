@@ -22,10 +22,11 @@
 /**
  * Module-scope numeric constants.
  */
+
 enum {
-	/* Maximum length of a sync point's name. */
+	/** Maximum length of a sync point's name. */
 	DS_MAX_POINT_NAME_LEN = 32,
-	/* Maximum number of sync points allowed. */
+	/** Maximum number of sync points allowed. */
 	DS_MAX_POINT_COUNT  = 256
 };
 
@@ -70,11 +71,15 @@ static struct ds_global {
  */
 
 
-/** True if debug sync is inactive. */
+/** True if debug sync is inactive.
+ * @return true if the framework is disabled (inactive).
+ */
 inline static bool inactive() { return ds.activation & DS_INACTIVE; }
 
 
-/** True if debug sync is inactive AND activation is controlled from a signle thread. */
+/** True if debug sync is inactive AND activation is local.
+ * @return true if debug sync is inactive AND activation is local.
+ */
 inline static bool
 local_inactive()
 {
@@ -82,7 +87,9 @@ local_inactive()
 }
 
 
-/** Set the activation flag. */
+/** Set the activation flag.
+ * @param activate Activate if true, disable if false.
+ */
 inline static void
 do_activate(bool activate)
 {
@@ -93,6 +100,7 @@ do_activate(bool activate)
 }
 
 
+/** Disable all sync points, wake up pending wait sections. */
 static void
 disable_all()
 {
@@ -109,6 +117,13 @@ disable_all()
 		pthread_cond_broadcast(&ds.cond);
 }
 
+
+/** Create a new sync point.
+ *
+ * @param point_name Name of the new sync point.
+ *
+ * @return pointer to the newly-created sync point or NULL.
+ */
 static struct ds_point*
 create_new(const char *point_name)
 {
@@ -137,9 +152,19 @@ create_new(const char *point_name)
 }
 
 
+/** Locate a sync point by name.
+ *
+ * @param point_name Name of the sync point.
+ *
+ * @return pointer to the named sync point, if found, otherwise - NULL.
+ */
 static struct ds_point*
 look_up(const char *point_name)
 {
+	/* NB: This does not scale to large ds.count, but neither
+	 * is ds.count expected to be large enough to need a faster
+	 * lookup.
+	 */
 	for(size_t i = 0; i < ds.count; ++i)
 		if (strcmp(point_name, ds.point[i].name) == 0)
 			return &ds.point[i];
@@ -147,6 +172,12 @@ look_up(const char *point_name)
 }
 
 
+/** Locate a sync point by name, create it if not found.
+ *
+ * @param point_name Name of the sync point.
+ *
+ * @return pointer to the named sync point, or NULL if error.
+ */
 static struct ds_point*
 acquire(const char *point_name)
 {
@@ -290,6 +321,13 @@ ds_exec(const char *point_name)
 			TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] is BUSY\n",
 				(long)pthread_self(), __func__, point_name));
 			rc = -1;
+			break;
+		}
+
+		/* No waiters - bail out. */
+		if (pt->nblocked == 0) {
+			TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] is IDLE\n",
+				(long)pthread_self(), __func__, point_name));
 			break;
 		}
 

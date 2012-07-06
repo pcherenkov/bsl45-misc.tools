@@ -1,5 +1,23 @@
 /* @(#) debugsync facility interface */
 
+/****************************************************************
+ * Debug synchronization facility provides the capability to
+ * 'insert' synchronization points into multi-threaded code.
+ *
+ * A a synchronization gets 'inserted' before a code
+ * section one wants to test (in thread A). In order to 
+ * put the system into a condition suitable for the test, 
+ * other threads may need to execute their test-specific
+ * code sections right before the tested sections executes
+ * (in thread A).
+ *
+ *  
+ *
+ *
+ *
+ ****************************************************************/
+
+
 #ifndef DEBUGSYNC_H_20120703
 #define DEBUGSYNC_H_20120703
 
@@ -21,11 +39,11 @@
 #endif
 
 
-/* Debug sync activation flags. */
+/** Debug sync activation flags. */
 enum {
-	/* Disable all framework functionality. */
+	/** Disable all framework functionality. */
 	DS_INACTIVE 		= 1,
-	/* [De-]Activation flag is *NOT* propagated across threads. */
+	/** [De-]Activation flag is *NOT* propagated across threads. */
 	DS_LOCAL_ACTIVATION	= (1 << 1)
 };
 

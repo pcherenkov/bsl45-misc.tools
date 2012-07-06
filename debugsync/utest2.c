@@ -103,6 +103,10 @@ int main()
 			break;
 		}
 
+		(void) fprintf(stderr, "%s: PAUSING\n", __func__);
+		sleep(3);
+		(void) fprintf(stderr, "%s: DONE PAUSING\n", __func__);
+
 		rc = DSYNC_SET("hollywood");
 		if (rc) break;
 
