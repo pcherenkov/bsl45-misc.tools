@@ -11,7 +11,7 @@
  * code sections right before the tested sections executes
  * (in thread A).
  *
- *  
+ * TODO: terminology and algorithm.
  *
  *
  *
