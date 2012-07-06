@@ -19,7 +19,7 @@
 #endif
 
 
-/*
+/**
  * Module-scope numeric constants.
  */
 enum {
@@ -30,33 +30,33 @@ enum {
 };
 
 
-/*
+/**
  * Debug sync point data.
  */
 struct ds_point {
-	/* Unique name to use as ID. */
-	char	*name;
-	/* Enabled state indicator. */
-	bool	is_enabled;
-	/* Sync-wait state indicator. */
-	bool	in_syncwait;
-	/* # of active waiting sections. */
-	size_t nblocked;
+	/** Unique name to use as ID. */
+	char		*name;
+	/** Enabled state indicator. */
+	bool		is_enabled;
+	/** Sync-wait state indicator. */
+	bool		in_syncwait;
+	/** # of active waiting sections. */
+	size_t 		nblocked;
 };
 
 
-/*
+/**
  * Module-scope variables in a single structure.
  */
 static struct ds_global {
-	/* On/off switch for ALL debug sync operations. */
-	bool		activated;
+	/**  Activation control flags (see header for details). */
+	u_int32_t	activation;
 
-	/* Mutex, cond pair to signal state changes. */
+	/** Mutex, cond pair to signal state changes. */
 	pthread_mutex_t	mtx;
 	pthread_cond_t	cond;
 
-	/* Debug sync points. */
+	/** Debug sync points. */
 	struct ds_point	point[DS_MAX_POINT_COUNT];
 	size_t		count;
 #ifdef DEBUG
@@ -69,12 +69,36 @@ static struct ds_global {
  * Implementation:
  */
 
+
+/** True if debug sync is inactive. */
+inline static bool inactive() { return ds.activation & DS_INACTIVE; }
+
+
+/** True if debug sync is inactive AND activation is controlled from a signle thread. */
+inline static bool
+local_inactive()
+{
+	return ds.activation & (DS_INACTIVE | DS_LOCAL_ACTIVATION);
+}
+
+
+/** Set the activation flag. */
+inline static void
+do_activate(bool activate)
+{
+	if (activate)
+		ds.activation &= ~DS_INACTIVE;
+	else
+		ds.activation |= DS_INACTIVE;
+}
+
+
 int
-ds_init(bool active)
+ds_init(u_int32_t activation_flags)
 {
 	(void) memset(&ds.point[0], 0, sizeof(ds.point));
 
-	ds.activated	= active;
+	ds.activation	= activation_flags;
 	ds.count	= 0;
 # ifdef DEBUG
 	ds.log		= stderr;
@@ -107,21 +131,29 @@ disable_all()
 void
 ds_disable_all()
 {
+	if (local_inactive())
+		return;
+
 	(void) pthread_mutex_lock(&ds.mtx);
-	if (ds.activated)
+	if (!inactive())
 		disable_all();
 	(void) pthread_mutex_unlock(&ds.mtx);
 }
 
 
 void
-ds_activate(bool active)
+ds_activate(bool activate)
 {
-	(void) pthread_mutex_lock(&ds.mtx);
-		if (ds.activated)
-			disable_all(); /* Err out pending waits. */
-		ds.activated = active;
-	(void) pthread_mutex_unlock(&ds.mtx);
+	if (local_inactive() && activate)
+	/* No need to lock if local & enabling (no chance of pending waits). */
+		do_activate(activate);
+	else {
+		(void) pthread_mutex_lock(&ds.mtx);
+			if (!inactive()) /* Err out pending waits. */
+				disable_all();
+			do_activate(activate);
+		(void) pthread_mutex_unlock(&ds.mtx);
+	}
 }
 
 
@@ -176,17 +208,15 @@ look_up(const char *point_name)
 
 
 static struct ds_point*
-acquire(const char *point_name, const char *origin)
+acquire(const char *point_name)
 {
-	(void)origin;
-
 	struct ds_point *pt = look_up(point_name);
 	if (pt == NULL)
 		pt = create_new(point_name);
 
 	if (pt == NULL) {
-		TRACE((void) fprintf(ds.log, "%s:%s failed to get [%s]\n",
-				origin, __func__, point_name));
+		TRACE((void) fprintf(ds.log, "0x%lx:%s failed to get [%s]\n",
+				(long)pthread_self(), __func__, point_name));
 	}
 
 	return pt;
@@ -194,19 +224,21 @@ acquire(const char *point_name, const char *origin)
 
 
 int
-ds_enable(const char *point_name, bool enable, const char *origin)
+ds_enable(const char *point_name, bool enable)
 {
 	struct ds_point *pt = NULL;
 	int rc = 0;
 
-	(void)origin;
-	TRACE((void) fprintf(ds.log, "%s:%s [%s, %d] IN\n",
-			origin ? origin : "",__func__,
+	if (local_inactive())
+		return 0;
+
+	TRACE((void) fprintf(ds.log, "0x%lx:%s [%s, %d] IN\n",
+			(long)pthread_self,__func__,
 			point_name, (int)enable));
 
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
-		if (!ds.activated)
+		if (inactive())
 			break;
 
 		pt = look_up(point_name);
@@ -222,64 +254,66 @@ ds_enable(const char *point_name, bool enable, const char *origin)
 	} while(0);
 	(void) pthread_mutex_unlock(&ds.mtx);
 
-	TRACE((void) fprintf(ds.log, "%s:%s [%s, %d] OUT with rc=%d\n",
-			origin ? origin : "",__func__,
+	TRACE((void) fprintf(ds.log, "0x%lx:%s [%s, %d] OUT with rc=%d\n",
+			(long)pthread_self(),__func__,
 			point_name, (int)enable, rc));
 	return (pt == NULL) ? -1 : rc;
 }
 
 
 int
-ds_exec(const char *point_name, const char *origin)
+ds_exec(const char *point_name)
 {
 	struct ds_point *pt = NULL;
 	int rc = 0;
 
-	(void)origin;
-	TRACE((void) fprintf(ds.log, "%s:%s [%s] IN\n",
-			origin ? origin : "",__func__,
+	if (local_inactive())
+		return 0;
+
+	TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] IN\n",
+			(long)pthread_self(),__func__,
 			point_name));
 
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
-		if (!ds.activated)
+		if (inactive())
 			break;
 
-		pt = acquire(point_name, origin);
+		pt = acquire(point_name);
 		if (pt == NULL)
 			break;
 
 		if (pt->is_enabled && pt->in_syncwait) {
-			TRACE((void) fprintf(ds.log, "%s:%s [%s] is BUSY\n",
-				origin ? origin: "", __func__, point_name));
+			TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] is BUSY\n",
+				(long)pthread_self(), __func__, point_name));
 			rc = -1;
 			break;
 		}
 
 		pt->in_syncwait = true; /* Lock the sync point. */
 
-		TRACE((void) fprintf(ds.log, "%s:%s RAISE [%s], %s\n",
-			origin ? origin : "", __func__, pt->name,
+		TRACE((void) fprintf(ds.log, "0x%lx:%s RAISE [%s], %s\n",
+			(long)pthread_self(), __func__, pt->name,
 			pt->is_enabled ? "enabled" : "disabled"));
 
 		rc = pthread_cond_broadcast(&ds.cond);
 
-		TRACE((void) fprintf(ds.log, "%s:%s HOLD [%s]\n",
-			origin ? origin : "", __func__, pt->name));
+		TRACE((void) fprintf(ds.log, "0x%lx:%s HOLD [%s]\n",
+			(long)pthread_self(), __func__, pt->name));
 
 		while (rc == 0 && pt->in_syncwait && pt->is_enabled)
 				rc = pthread_cond_wait(&ds.cond, &ds.mtx);
 
-		TRACE((void) fprintf(ds.log, "%s:%s UNLOCK [%s] %s %s\n",
-			origin ? origin : "", __func__, pt->name,
+		TRACE((void) fprintf(ds.log, "0x%lx:%s UNLOCK [%s] %s %s\n",
+			(long)pthread_self(), __func__, pt->name,
 			pt->is_enabled ? "enabled" : "disabled",
 			pt->in_syncwait ? "+S" : "-S"));
 
 		pt->in_syncwait = false; /* Sync point unlocked. */
 
 		if (!pt->is_enabled) {
-			TRACE((void) fprintf(ds.log, "%s:%s [%s] has been DISABLED\n",
-				origin ? origin: "", __func__, pt->name));
+			TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] has been DISABLED\n",
+				(long)pthread_self(), __func__, pt->name));
 			rc = -1;
 			break;
 		}
@@ -287,36 +321,38 @@ ds_exec(const char *point_name, const char *origin)
 	} while(0);
 	(void) pthread_mutex_unlock(&ds.mtx);
 
-	TRACE((void) fprintf(ds.log, "%s:%s [%s] OUT with rc=%d\n",
-			origin ? origin : "",__func__,
+	TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] OUT with rc=%d\n",
+			(long)pthread_self(),__func__,
 			point_name, rc));
 	return (pt == NULL) ? -1 : rc;
 }
 
 
 int
-ds_wait(const char *point_name, const char *origin)
+ds_wait(const char *point_name)
 {
 	int rc = 0;
 	struct ds_point *pt = NULL;
 
-	(void)origin;
-	TRACE((void) fprintf(ds.log, "%s:%s [%s] IN\n",
-			origin ? origin : "", __func__, point_name));
+	if (local_inactive())
+		return 0;
+
+	TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] IN\n",
+			(long)pthread_self(), __func__, point_name));
 
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
-		if (!ds.activated)
+		if (inactive())
 			break;
 
-		pt = acquire(point_name, origin);
+		pt = acquire(point_name);
 		if (pt == NULL)
 			break;
 
 		pt->nblocked++;
 
-		TRACE((void) fprintf(ds.log, "%s:%s [%s] WAIT with [%ld] blocked\n",
-			origin ? origin : "", __func__, pt->name, (long)pt->nblocked));
+		TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] WAIT with [%ld] blocked\n",
+			(long)pthread_self(), __func__, pt->name, (long)pt->nblocked));
 
 		/* Wait for the point to reach "sync-wait" state,
 		 * interrupt the wait if sync point gets disabled.
@@ -324,59 +360,61 @@ ds_wait(const char *point_name, const char *origin)
 		while (rc == 0 && !pt->in_syncwait && pt->is_enabled)
 			rc = pthread_cond_wait(&ds.cond, &ds.mtx);
 
-		TRACE((void) fprintf(ds.log, "%s:%s [%s] WOKE UP with [%ld] blocked, %s %s\n",
-			origin ? origin : "", __func__, pt->name, (long)pt->nblocked,
+		TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] WOKE UP with [%ld] blocked, %s %s\n",
+			(long)pthread_self(), __func__, pt->name, (long)pt->nblocked,
 			pt->is_enabled ? "enabled" : "disabled",
 			pt->in_syncwait ? "+S" : "-S"));
 
 		if (!pt->is_enabled) {
-			TRACE((void) fprintf(ds.log, "%s:%s [%s] has been DISABLED\n",
-				origin ? origin: "", __func__, point_name));
+			TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] has been DISABLED\n",
+				(long)pthread_self(), __func__, point_name));
 			rc = -1;
 			break;
 		}
 	} while(0);
 	(void) pthread_mutex_unlock(&ds.mtx);
 
-	(void) TRACE(fprintf(ds.log, "%s:%s [%s] OUT with rc=%d\n",
-			origin ? origin : "", __func__,
+	(void) TRACE(fprintf(ds.log, "0x%lx:%s [%s] OUT with rc=%d\n",
+			(long)pthread_self(), __func__,
 			point_name, rc));
 	return pt ? rc : -1;
 }
 
 
 int
-ds_unblock(const char *point_name, const char *origin)
+ds_unblock(const char *point_name)
 {
 	int rc = 0;
 	struct ds_point *pt = NULL;
 
-	(void)origin;
-	TRACE((void) fprintf(ds.log, "%s:%s [%s] IN\n",
-			origin ? origin : "", __func__, point_name));
+	if (local_inactive())
+		return 0;
+
+	TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] IN\n",
+			pthread_self(), __func__, point_name));
 
 	(void) pthread_mutex_lock(&ds.mtx);
 	do {
-		if (!ds.activated)
+		if (inactive())
 			break;
 
 		pt = look_up(point_name);
 		if (pt == NULL) {
-			TRACE((void)fprintf(ds.log, "%s:%s [%s] does not exist\n",
-				origin ? origin: "", __func__, point_name));
+			TRACE((void)fprintf(ds.log, "0x%lx:%s [%s] does not exist\n",
+				(long)pthread_self(), __func__, point_name));
 			break;
 		}
 
 		assert(pt->nblocked > 0);
 		--pt->nblocked;
 
-		TRACE((void) fprintf(ds.log, "%s:%s [%s] %ld blocked\n",
-			origin ? origin : "", __func__, pt->name,
+		TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] %ld blocked\n",
+			(long)pthread_self(), __func__, pt->name,
 			(long)pt->nblocked));
 
 		if (pt->nblocked == 0) {
-			TRACE((void) fprintf(ds.log, "%s:%s [%s] - syncwait END\n",
-				origin ? origin : "", __func__, pt->name));
+			TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] - syncwait END\n",
+				pthread_self(), __func__, pt->name));
 
 			pt->in_syncwait = false;
 			rc = pthread_cond_broadcast(&ds.cond);
@@ -384,8 +422,8 @@ ds_unblock(const char *point_name, const char *origin)
 	} while(0);
 	(void) pthread_mutex_unlock(&ds.mtx);
 
-	TRACE((void) fprintf(ds.log, "%s:%s [%s] OUT with rc=%d\n",
-			origin ? origin : "", __func__, point_name, rc));
+	TRACE((void) fprintf(ds.log, "0x%lx:%s [%s] OUT with rc=%d\n",
+			(long)pthread_self(), __func__, point_name, rc));
 	return pt ? rc : -1;
 }
 

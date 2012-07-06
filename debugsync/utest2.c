@@ -14,8 +14,8 @@ run(const char *name, unsigned int pnap, unsigned int anap, const char *origin)
 {
 	long rc = 0;
 
-	(void)fprintf(stderr, "%s [%s] pnap=%u, anap=%u BEGIN\n",
-		origin ? origin : "?", name, pnap, anap);
+	(void)fprintf(stderr, "0x%lx:%s [%s] pnap=%u, anap=%u BEGIN\n",
+		(long)pthread_self(), origin ? origin : "?", name, pnap, anap);
 	do {
 		if (pnap) {
 			(void) fprintf(stderr, "%s: taking P-nap for %u sec\n", origin, pnap);
@@ -23,7 +23,7 @@ run(const char *name, unsigned int pnap, unsigned int anap, const char *origin)
 			(void) fprintf(stderr, "%s: P-woke up\n", origin);
 		}
 
-		rc = ds_wait(name, origin);
+		rc = ds_wait(name);
 		if (rc) break;
 
 		if (anap) {
@@ -32,10 +32,10 @@ run(const char *name, unsigned int pnap, unsigned int anap, const char *origin)
 			(void) fprintf(stderr, "%s: A-woke up\n", origin);
 		}
 
-		rc = ds_unblock(name, origin);
+		rc = ds_unblock(name);
 		if (rc) break;
 	} while(0);
-	(void)fprintf(stderr, "%s END (%ld)\n", origin, rc);
+	(void)fprintf(stderr, "0x%lx:%s END (%ld)\n", (long)pthread_self(), origin, rc);
 
 	return (void*)rc;
 }
@@ -46,8 +46,8 @@ syncpt(const char *name, unsigned int pnap, unsigned int anap, const char *origi
 {
 	long rc = 0;
 
-	(void)fprintf(stderr, "%s [%s] pnap=%u, anap=%u BEGIN\n",
-		origin ? origin : "?", name, pnap, anap);
+	(void)fprintf(stderr, "0x%lx:%s [%s] pnap=%u, anap=%u BEGIN\n",
+		(long)pthread_self(), origin ? origin : "?", name, pnap, anap);
 	do {
 		if (pnap) {
 			(void) fprintf(stderr, "%s: P-nap (%u) sec\n", origin, pnap);
@@ -55,7 +55,7 @@ syncpt(const char *name, unsigned int pnap, unsigned int anap, const char *origi
 			(void) fprintf(stderr, "%s: P-woke up\n", origin);
 		}
 
-		rc = ds_exec(name, origin);
+		rc = ds_exec(name);
 		if (rc) break;
 
 		if (anap) {
@@ -65,7 +65,7 @@ syncpt(const char *name, unsigned int pnap, unsigned int anap, const char *origi
 		}
 
 	} while(0);
-	(void)fprintf(stderr, "%s END (%ld)\n", origin, rc);
+	(void)fprintf(stderr, "0x%lx:%s END (%ld)\n", (long)pthread_self(), origin, rc);
 
 	return (void*)rc;
 }
@@ -92,7 +92,7 @@ int main()
 
 	(void) fprintf(stderr, "%s: started.\n", __func__);
 	do {
-		rc = ds_init(true);
+		rc = ds_init(0);
 		if (rc) break;
 
 		for (size_t i = 0; rc == 0 && i < THR_COUNT; ++i)
@@ -113,7 +113,8 @@ int main()
 	ds_disable_all();
 
 	for (size_t i = 0; i < THR_COUNT; ++i) {
-		(void) fprintf(stderr, "Joining thread %ld:\t", (long)i+1);
+		(void) fprintf(stderr, "Joining thread %ld (0x%lx):\t", (long)i+1,
+			(long)t[i].tid);
 		jrc = pthread_join(t[i].tid, NULL);
 		(void) fprintf(stderr, "%s (%d)\n", jrc ? "FAILED" : "OK", jrc);
 		if (jrc)
