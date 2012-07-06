@@ -66,7 +66,7 @@ static struct ds_global {
 
 
 /*
- * Implementation:
+ * Local-scope functions: 
  */
 
 
@@ -93,24 +93,6 @@ do_activate(bool activate)
 }
 
 
-int
-ds_init(u_int32_t activation_flags)
-{
-	(void) memset(&ds.point[0], 0, sizeof(ds.point));
-
-	ds.activation	= activation_flags;
-	ds.count	= 0;
-# ifdef DEBUG
-	ds.log		= stderr;
-# endif
-
-	(void) pthread_mutex_init(&ds.mtx, NULL);
-	(void) pthread_cond_init(&ds.cond, NULL);
-
-	return 0;
-}
-
-
 static void
 disable_all()
 {
@@ -126,48 +108,6 @@ disable_all()
 	if (has_pending_waits)
 		pthread_cond_broadcast(&ds.cond);
 }
-
-
-void
-ds_disable_all()
-{
-	if (local_inactive())
-		return;
-
-	(void) pthread_mutex_lock(&ds.mtx);
-	if (!inactive())
-		disable_all();
-	(void) pthread_mutex_unlock(&ds.mtx);
-}
-
-
-void
-ds_activate(bool activate)
-{
-	if (local_inactive() && activate)
-	/* No need to lock if local & enabling (no chance of pending waits). */
-		do_activate(activate);
-	else {
-		(void) pthread_mutex_lock(&ds.mtx);
-			if (!inactive()) /* Err out pending waits. */
-				disable_all();
-			do_activate(activate);
-		(void) pthread_mutex_unlock(&ds.mtx);
-	}
-}
-
-
-void
-ds_destroy()
-{
-	(void) pthread_cond_destroy(&ds.cond);
-	(void) pthread_mutex_destroy(&ds.mtx);
-
-	for (size_t i = 0; i < ds.count; ++i)
-		free(ds.point[i].name);
-}
-
-
 
 static struct ds_point*
 create_new(const char *point_name)
@@ -220,6 +160,69 @@ acquire(const char *point_name)
 	}
 
 	return pt;
+}
+
+
+/*
+ * Implementation:
+ */
+
+
+int
+ds_init(u_int32_t activation_flags)
+{
+	(void) memset(&ds.point[0], 0, sizeof(ds.point));
+
+	ds.activation	= activation_flags;
+	ds.count	= 0;
+# ifdef DEBUG
+	ds.log		= stderr;
+# endif
+
+	(void) pthread_mutex_init(&ds.mtx, NULL);
+	(void) pthread_cond_init(&ds.cond, NULL);
+
+	return 0;
+}
+
+
+void
+ds_disable_all()
+{
+	if (local_inactive())
+		return;
+
+	(void) pthread_mutex_lock(&ds.mtx);
+	if (!inactive())
+		disable_all();
+	(void) pthread_mutex_unlock(&ds.mtx);
+}
+
+
+void
+ds_activate(bool activate)
+{
+	if (local_inactive() && activate)
+	/* No need to lock if local & enabling (no chance of pending waits). */
+		do_activate(activate);
+	else {
+		(void) pthread_mutex_lock(&ds.mtx);
+			if (!inactive()) /* Err out pending waits. */
+				disable_all();
+			do_activate(activate);
+		(void) pthread_mutex_unlock(&ds.mtx);
+	}
+}
+
+
+void
+ds_destroy()
+{
+	(void) pthread_cond_destroy(&ds.cond);
+	(void) pthread_mutex_destroy(&ds.mtx);
+
+	for (size_t i = 0; i < ds.count; ++i)
+		free(ds.point[i].name);
 }
 
 
