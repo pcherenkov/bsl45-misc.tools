@@ -67,14 +67,14 @@ static struct ds_global {
 
 
 /*
- * Local-scope functions: 
+ * Local-scope functions:
  */
 
 
 /** True if debug sync is inactive.
  * @return true if the framework is disabled (inactive).
  */
-inline static bool inactive() { return ds.activation & DS_INACTIVE; }
+inline static bool inactive() { return (ds.activation & DS_ACTIVE) == 0; }
 
 
 /** True if debug sync is inactive AND activation is local.
@@ -83,7 +83,7 @@ inline static bool inactive() { return ds.activation & DS_INACTIVE; }
 inline static bool
 local_inactive()
 {
-	return ds.activation & (DS_INACTIVE | DS_LOCAL_ACTIVATION);
+	return (ds.activation & (DS_ACTIVE | DS_GLOBAL)) == 0;
 }
 
 
@@ -94,9 +94,9 @@ inline static void
 do_activate(bool activate)
 {
 	if (activate)
-		ds.activation &= ~DS_INACTIVE;
+		ds.activation |= DS_ACTIVE;
 	else
-		ds.activation |= DS_INACTIVE;
+		ds.activation &= ~DS_ACTIVE;
 }
 
 

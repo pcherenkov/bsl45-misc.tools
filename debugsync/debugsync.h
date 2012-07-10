@@ -26,26 +26,31 @@
 
 #ifdef NDEBUG
 
+#	define  DSYNC_ACTIVATE(activate)
 #	define	DSYNC_SET(name)
+#	define  DSYNC_ENABLE(name, enable)
 #	define	DSYNC_WAIT(name)
 #	define	DSYNC_UNBLOCK(name)
 
 #else
 
-#	define	DSYNC_SET(name)		ds_exec(name)
-#	define	DSYNC_WAIT(name)	ds_wait(name)
-#	define	DSYNC_UNBLOCK(name)	ds_unblock(name)
+#	define  DSYNC_ACTIVATE(activate)	ds_activate(activate)
+#	define	DSYNC_SET(name)			ds_exec(name)
+#	define  DSYNC_ENABLE(name, enable)	ds_enable(name, enable)
+#	define	DSYNC_WAIT(name)		ds_wait(name)
+#	define	DSYNC_UNBLOCK(name)		ds_unblock(name)
 
 #endif
 
 
 /** Debug sync activation flags. */
 enum {
-	/** Disable all framework functionality. */
-	DS_INACTIVE 		= 1,
-	/** [De-]Activation flag is *NOT* propagated across threads. */
-	DS_LOCAL_ACTIVATION	= (1 << 1)
+	/** Enable framework functionality. */
+	DS_ACTIVE 		= 1,
+	/** On-the-fly activation is propagated across threads. */
+	DS_GLOBAL		= (1 << 1)
 };
+
 
 #ifdef __cplusplus
 extern "C" {
