@@ -64,7 +64,7 @@ pqueue_free(queue_t q)
 
 /* Return non-zero if queue is empty. */
 int
-pqueue_empty(queue_t q)
+is_pqueue_empty(queue_t q)
 {
 	struct pqueue *pq = (struct pqueue*)q;
 	return 0 == pq->count;

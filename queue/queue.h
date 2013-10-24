@@ -54,12 +54,21 @@ int pqueue_put(queue_t q, void *val);
 
 
 /**
+ * Return non-zero if queue is empty.
+ *
+ * @param q	queue to test.
+ */
+int is_pqueue_empty(queue_t q);
+
+
+/**
  * Output queue metadata and contents.
  *
  * @param q		queue to dump.
  * @param fp		destination file.
  */
 void pqueue_dump(queue_t q, FILE *fp);
+
 
 #ifdef __cplusplus
 }
