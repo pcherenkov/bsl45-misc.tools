@@ -58,8 +58,17 @@ int pqueue_put(queue_t q, void *val);
  *
  * @param q	queue to test.
  */
-int is_pqueue_empty(queue_t q);
+int pqueue_is_empty(queue_t q);
 
+
+/**
+ * Return the number of queued elements.
+ *
+ * @param q	queue to examine.
+ *
+ * @return number of elements in the queue.
+ */
+size_t pqueue_count(queue_t q);
 
 /**
  * Output queue metadata and contents.

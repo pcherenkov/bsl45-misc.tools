@@ -48,6 +48,15 @@ pqueue_create(size_t capacity)
 }
 
 
+/* Return the number of queued elements. */
+size_t
+pqueue_count(queue_t q)
+{
+	struct pqueue *pq = (struct pqueue*)q;
+	return pq->count;
+}
+
+
 /* Release resources allocated for the queue. */
 void
 pqueue_free(queue_t q)
@@ -64,7 +73,7 @@ pqueue_free(queue_t q)
 
 /* Return non-zero if queue is empty. */
 int
-is_pqueue_empty(queue_t q)
+pqueue_is_empty(queue_t q)
 {
 	struct pqueue *pq = (struct pqueue*)q;
 	return 0 == pq->count;
@@ -136,7 +145,8 @@ pqueue_dump(queue_t q, FILE *fp)
 	size_t n = 0;
 
 	fprintf(fp, "pq(count=%lu/%lu, head=%ld, tail=%ld) {",
-		(u_long)pq->count, (u_long)pq->max_count, (long)pq->head, (long)pq->tail);
+		(u_long)pq->count, (u_long)pq->max_count,
+		(long)pq->head, (long)pq->tail);
 	for (n = 0, i = pq->head; n < pq->count; ++n, ++i) {
 		if (i >= (ssize_t)pq->max_count)
 			i = 0;
