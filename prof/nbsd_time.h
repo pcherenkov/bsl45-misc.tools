@@ -55,7 +55,7 @@
  * Below are BSD macros, these are usually defined when compiling
  * BSD code.
  */
-#if !defined(__BSD) && !defined(__USE_BSD)
+#if !defined(__BSD) && !defined(__USE_BSD) && !defined(__FreeBSD__)
 
 /* Operations on timevals. */
 #define	timerclear(tvp)		(tvp)->tv_sec = (tvp)->tv_usec = 0

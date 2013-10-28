@@ -53,6 +53,24 @@ void* pqueue_get(queue_t q);
 int pqueue_put(queue_t q, void *val);
 
 
+/* Type-cast helpers:
+ */
+inline static int
+pqueue_iget(queue_t q)
+{
+	long lval = (long) pqueue_get(q);
+	return (int) lval;
+}
+
+
+inline static int
+pqueue_iput(queue_t q, int val)
+{
+	long lval = val;
+	return pqueue_put(q, (void*)lval);
+}
+
+
 /**
  * Return non-zero if queue is empty.
  *

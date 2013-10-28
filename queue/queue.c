@@ -88,7 +88,7 @@ pqueue_get(queue_t q)
 	void *val = NULL;
 
 	if (0 == pq->count) {
-		errno = ERANGE;
+		errno = ENOENT;
 		return (void*)-1;
 	}
 
@@ -116,7 +116,7 @@ pqueue_put(queue_t q, void *val)
 	struct pqueue *pq = (struct pqueue*)q;
 
 	if (pq->count >= pq->max_count) {
-		errno = ERANGE;
+		errno = ENOMEM;
 		return -1;
 	}
 
