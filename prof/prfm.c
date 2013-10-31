@@ -150,10 +150,10 @@ prfm_dump(FILE *fp, const struct prfm *r, const char* fmt, ...)
     }
 
     if (r->flags & prfm_TIME)
-    	tmspec_dump(fp, &r->accum.tm);
+	tmspec_dump(fp, &r->accum.tm);
 
     if (r->flags & prfm_RUSAGE)
-    	rusage_dump(fp, ru);
+	rusage_dump(fp, ru);
 }
 
 
